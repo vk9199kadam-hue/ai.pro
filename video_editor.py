@@ -20,19 +20,38 @@ def download_clip_slice(video_url: str, start_sec: float, end_sec: float, raw_ou
     start_str = f"{int(start_sec//3600):02d}:{int((start_sec%3600)//60):02d}:{int(start_sec%60):02d}"
     end_str = f"{int(end_sec//3600):02d}:{int((end_sec%3600)//60):02d}:{int(end_sec%60):02d}"
     
-    cmd = [
+    # Try direct download first; fallback to cookies only if needed
+    base_cmd = [
         sys.executable, "-m", "yt_dlp",
-        "--cookies-from-browser", "chrome",
         "--ffmpeg-location", ffmpeg_bin,
         "--download-sections", f"*{start_str}-{end_str}",
         "--force-keyframes-at-cuts",
-        "-f", "bestvideo+bestaudio/best",
+        "--merge-output-format", "mp4",
+        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
         "-o", raw_output_path,
         video_url
     ]
     
     print(f"[1/2] Slicing segment ({start_str} to {end_str})...")
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(base_cmd, check=True)
+    except subprocess.CalledProcessError:
+        print("Direct slice download failed, trying with Chrome cookies fallback...")
+        cookie_cmd = base_cmd[:2] + ["--cookies-from-browser", "chrome"] + base_cmd[2:]
+        subprocess.run(cookie_cmd, check=True)
+        
+    # Resolve actual output file if yt-dlp used another extension (e.g. .webm)
+    if os.path.exists(raw_output_path):
+        return raw_output_path
+        
+    parent = os.path.dirname(raw_output_path) or "."
+    base_name = os.path.splitext(os.path.basename(raw_output_path))[0]
+    for fname in os.listdir(parent):
+        if fname.startswith(base_name) and not fname.endswith(".part"):
+            actual_path = os.path.join(parent, fname)
+            print(f"Located downloaded slice at: {actual_path}")
+            return actual_path
+            
     return raw_output_path
 
 def convert_to_vertical_reel(input_video_path: str, output_reel_path: str, layout: str = "blurred_fill"):

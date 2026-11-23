@@ -7,9 +7,13 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from google import genai
 from google.genai import types
 
+# Load environment variables from script directory and current working directory
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_script_dir, ".env"))
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+def get_api_key():
+    return os.getenv("GEMINI_API_KEY")
 
 def extract_video_id(url: str) -> str:
     """Extract YouTube Video ID from various URL formats."""
@@ -57,10 +61,11 @@ def format_transcript_for_ai(transcript_data) -> str:
 
 def detect_viral_moments(transcript_text: str, num_clips: int = 3):
     """Use Gemini Flash to find viral hooks and timestamps."""
-    if not GEMINI_API_KEY:
+    api_key = get_api_key()
+    if not api_key:
         raise ValueError("GEMINI_API_KEY not found in .env")
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=api_key, http_options=types.HttpOptions(api_version='v1beta'))
     
     prompt = f"""
 You are a world-class AI viral content editor (like Opus Clip and Klap).
@@ -96,8 +101,16 @@ Respond ONLY in valid JSON matching this schema:
 }}
 """
 
-    # Active model list
-    for model_name in ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash"]:
+    # Active model list with resilient fallbacks
+    models_to_try = [
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.7-flash",
+        "gemini-2.5-flash"
+    ]
+
+    last_error = None
+    for model_name in models_to_try:
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -107,17 +120,16 @@ Respond ONLY in valid JSON matching this schema:
                     temperature=0.3
                 )
             )
-            # Filter text parts if thought parts exist
             response_text = response.text
             return json.loads(response_text)
         except Exception as e:
-            print(f"Model {model_name} error: {e}. Trying next fallback...")
+            last_error = e
+            print(f"Model {model_name} notice: {e}. Trying next fallback...")
             continue
-    raise RuntimeError("All Gemini model attempts failed.")
+    raise RuntimeError(f"All Gemini model attempts failed. Last error: {last_error}")
 
 def slice_video_segment(video_url: str, start_sec: float, end_sec: float, output_path: str):
     """Download ONLY the specified seconds using yt-dlp (No full video download!)."""
-    # Format HH:MM:SS
     start_str = f"{int(start_sec//3600):02d}:{int((start_sec%3600)//60):02d}:{int(start_sec%60):02d}"
     end_str = f"{int(end_sec//3600):02d}:{int((end_sec%3600)//60):02d}:{int(end_sec%60):02d}"
     
@@ -149,8 +161,7 @@ if __name__ == "__main__":
     formatted = format_transcript_for_ai(raw_transcript)
     print(f"Transcript fetched ({len(raw_transcript)} segments, {len(formatted)} characters).")
     
-    print("2. Analyzing viral moments with Gemini 2.0 Flash...")
+    print("2. Analyzing viral moments with Gemini Flash...")
     analysis = detect_viral_moments(formatted, num_clips=3)
     print("\n--- AI VIRAL CLIPS FOUND ---")
     print(json.dumps(analysis, indent=2))
-
