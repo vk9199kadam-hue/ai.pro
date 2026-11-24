@@ -1,13 +1,15 @@
-# 🎬 Automatic Short Video Clip Extraction & Multi-Video Preview Blueprint
+# 🎬 Automatic Short Video Clip Extraction, Multi-Video Preview & AI Social Kit Blueprint
 
-> **Target Goal:** When AI finds $N$ viral moments (e.g. 3 clips), automatically extract/download those 3 specific short video segments so the user can **watch and preview the actual video clips** directly inside the app before choosing which one to edit and render.  
-> **Feasibility:** **100% Possible & Recommended** (Industry standard used by Opus Clip, Klap, and 2short.ai).  
+> **Target Goal:** When AI finds $N$ viral moments (e.g. 3 clips):  
+> 1. Automatically extract/download those 3 specific short video segments so the user can **watch and preview the actual video clips** directly inside the app before choosing which one to edit.  
+> 2. Automatically generate an **AI Social Media Kit** for each clip: a viral social media caption, 10–15 trending hashtags, and the complete spoken transcript.  
+> **Feasibility:** **100% Possible & Recommended** (Industry standard used by Opus Clip, Klap, and Captions.ai).  
 
 ---
 
 ## 1. Feasibility & Architecture Options Analysis
 
-To achieve this seamlessly without overloading the user's phone or incurring high server costs, there are three primary architectural paths:
+To achieve live video previews without overloading the user's phone or incurring high server costs, there are three primary architectural paths:
 
 | Metric | Option A: Server-Side Section Extraction *(Recommended)* | Option B: In-App Embedded Player (Zero Storage) | Option C: Mobile Phone Full Download |
 | :--- | :--- | :--- | :--- |
@@ -20,9 +22,24 @@ To achieve this seamlessly without overloading the user's phone or incurring hig
 
 ---
 
-## 2. Recommended Hybrid Architecture: "Smart Section Extraction"
+## 2. The AI Social Kit & Full Clip Transcript Capability
 
-We implement **Option A (Server-Side Section Trimming)** with a fallback to **Option B (Embedded Stream)**:
+### Can Gemini also generate captions, viral hashtags, and the full spoken transcript?
+**YES, 100% effortlessly in the same single AI pass!**  
+Gemini 3.5 Flash analyzes the spoken transcript and already knows the exact context of each viral moment. In the very same JSON response, it generates:
+
+1. **Viral Social Media Caption:** An engaging 2–3 sentence copy with a curiosity hook and Call-to-Action (CTA):
+   > *"You won't believe this 100-year-old eatery in Maharashtra still uses zero hired chefs! Four generations, one iconic secret recipe. Would you try this mutton thali? Drop your thoughts below! 👇"*
+2. **Platform-Optimized Hashtags (10–15 tags):**
+   > `#MuttonThali #MaharashtraFood #SecretRecipe #100YearOldFood #IndianFoodie #StreetFoodIndia #ViralReels #Shorts #FoodLovers #KolhapurFood`
+3. **Full Spoken Transcript of the Segment:**
+   > Every spoken word between `start_time` and `end_time` clearly transcribed and formatted into sentences.
+4. **Word-Level Micro-Timestamps:**
+   > Precision timestamps for each individual word to power the animated on-screen subtitles (`Hype Yellow` / `Clean Minimal`).
+
+---
+
+## 3. Recommended End-to-End Workflow & Architecture
 
 ```mermaid
 sequenceDiagram
@@ -30,41 +47,61 @@ sequenceDiagram
     actor Creator as 👤 Creator / User
     participant App as 📱 Mobile UI (Carousel)
     participant API as ☁️ FastAPI Backend
-    participant Worker as ⚙️ Background Extractor (yt-dlp + ffmpeg)
-    participant Storage as 📁 Static Media Directory
+    participant Worker as ⚙️ Background Extractor (yt-dlp)
+    participant Gemini as 🧠 Gemini 3.5 Flash
 
-    Creator->>App: Submits YouTube Link
+    Creator->>App: Submits Video Link
     App->>API: POST /api/v1/analyze
-    API-->>App: Return 3 Viral Moments (Instant JSON with Titles & Hooks)
-    
-    par Background Video Cutting
-        API->>Worker: Trigger range extraction for Clip 1 (00:12–01:02)
-        API->>Worker: Trigger range extraction for Clip 2 (17:38–18:28)
-        API->>Worker: Trigger range extraction for Clip 3 (02:49–03:39)
-        Worker->>Storage: Save lightweight preview clips (clip_1.mp4, clip_2.mp4, clip_3.mp4)
+    API->>Gemini: Prompt for Moments + Social Kit (Captions, Tags, Transcripts)
+    Gemini-->>API: Structured JSON with Hooks, Social Kit & Word Timestamps
+    API-->>App: Immediate Response with 3 Clips + Metadata
+
+    par Background Video Section Cutting
+        API->>Worker: Extract Clip 1 (00:12–01:02) to media/clips/clip_1.mp4
+        API->>Worker: Extract Clip 2 (17:38–18:28) to media/clips/clip_2.mp4
+        API->>Worker: Extract Clip 3 (02:49–03:39) to media/clips/clip_3.mp4
     end
 
-    App-->>Creator: Shows Carousel Cards with Video Players
-    Creator->>App: Taps Play on Clip 1 (Streams 5MB MP4 with Audio)
-    Creator->>App: Watches all 3 videos side-by-side
+    App-->>Creator: Shows Cards with Inline Video Players + Social Kit Drawer
+    Creator->>App: Plays and Watches all 3 videos with sound
+    Creator->>App: Taps "📋 Copy Caption & Hashtags" (Instant Clipboard Copy)
     Creator->>App: Taps "✂️ Select & Edit Clip 1"
-    App->>App: Transitions to Editor Studio with exact clip pre-loaded
+    App->>App: Opens Editor Studio with exact video + subtitles pre-loaded
 ```
 
 ---
 
-## 3. End-to-End User Experience (Screen by Screen)
+## 4. End-to-End User Experience (Screen by Screen)
 
 ```
 [Screen 1: Ingestion]
-User pastes video link ──► Taps "Find Viral Moments"
+Paste YouTube Link ──► Tap "Find Viral Moments"
 
                ▼
-[Screen 2: Multi-Clip Video Preview Studio]
-Card 1: [ ▶️ Play Video (00:12 - 01:02) ] ── Score: 92/100 ── "100 Year Old Secret"
-Card 2: [ ▶️ Play Video (17:38 - 18:28) ] ── Score: 94/100 ── "Politicians' Favorite"
-Card 3: [ ▶️ Play Video (02:49 - 03:39) ] ── Score: 90/100 ── "Best Mutton in MH"
-        [ ✂️ Select & Customize This Clip ]
+[Screen 2: Multi-Clip Video Preview & Social Studio]
+┌────────────────────────────────────────────────────────┐
+│  Card 1: [ ▶️ Play Video (00:12 - 01:02) ]             │
+│  🔥 92/100 · "100 Year Old Secret Mutton Recipe!"      │
+│                                                        │
+│  📝 Full Spoken Text:                                  │
+│  "गेली १०० वर्षात तुमची चव तीच राहिली आहे..."          │
+│                                                        │
+│  📱 AI Social Caption:                                 │
+│  "100 years of secret recipe with no hired cooks! 👇"  │
+│                                                        │
+│  🏷️ Hashtags:                                          │
+│  #MuttonThali #MaharashtraFood #SecretRecipe #Shorts   │
+│                                                        │
+│  [ 📋 Copy Social Kit ]     [ ✂️ Select & Edit Video ] │
+├────────────────────────────────────────────────────────┤
+│  Card 2: [ ▶️ Play Video (17:38 - 18:28) ]             │
+│  🔥 94/100 · "Politicians' Favorite Mutton Biryani!"   │
+│  [ 📋 Copy Social Kit ]     [ ✂️ Select & Edit Video ] │
+├────────────────────────────────────────────────────────┤
+│  Card 3: [ ▶️ Play Video (02:49 - 03:39) ]             │
+│  🔥 90/100 · "Is This The Best Mutton in MH?"          │
+│  [ 📋 Copy Social Kit ]     [ ✂️ Select & Edit Video ] │
+└────────────────────────────────────────────────────────┘
 
                ▼
 [Screen 3: Editing Studio]
@@ -77,80 +114,100 @@ Media3 GPU renders the 1080x1920 MP4 directly into Android Gallery
 
 ---
 
-## 4. Technical Implementation Specification
+## 5. Technical Implementation Specification
 
-### Part 1: Backend Section Extractor (`backend/app/services/clip_extractor.py`)
-Using `yt-dlp`'s HTTP Range Header capability to download **ONLY** the required seconds without downloading the whole video:
+### Part 1: Schema Extension (`backend/app/schemas/manifest.py`)
+Add the Social Kit and Full Transcript fields to the `ViralClip` schema:
 
 ```python
-import subprocess
-import os
+class SocialKit(BaseModel):
+    viral_title: str
+    caption: str
+    hashtags: List[str]
+    hashtags_formatted: str  # e.g. "#Food #Reels #Shorts"
+    full_transcript: str     # Complete spoken text of this clip
 
-def extract_video_section(video_url: str, start_sec: float, end_sec: float, output_path: str) -> bool:
-    """
-    Downloads ONLY the specified time range from YouTube using HTTP range requests.
-    Example: --download-sections "*00:12-01:02"
-    """
-    start_fmt = format_seconds(start_sec)
-    end_fmt = format_seconds(end_sec)
-    section_arg = f"*{start_fmt}-{end_fmt}"
-    
-    cmd = [
-        "yt-dlp",
-        "--download-sections", section_arg,
-        "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
-        "--force-keyframes-at-cuts",
-        "-o", output_path,
-        video_url
-    ]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return result.returncode == 0
+class ViralClip(BaseModel):
+    clip_number: int
+    hook_title: str
+    start_time_seconds: float
+    end_time_seconds: float
+    start_time_formatted: str
+    end_time_formatted: str
+    duration_seconds: float
+    viral_score: int
+    virality_reason: str
+    key_quote: str
+    preview_url: Optional[str] = None  # Direct streaming URL of the 45s cut
+    social_kit: SocialKit              # Captions, hashtags, full text
+    words: List[RelativeWord]          # Micro-timestamps for subtitles
 ```
 
-### Part 2: FastAPI Static Media Mount (`backend/app/main.py`)
-Mount a public static media folder so the mobile app can stream the extracted preview clips directly:
-```python
-from fastapi.staticfiles import StaticFiles
+### Part 2: Gemini Prompt Enhancement (`backend/app/services/gemini_service.py`)
+Instruct Gemini to generate the complete social media package in the structured JSON:
+```
+For each clip identified, also provide:
+- "social_caption": A high-converting 2-sentence description for Instagram Reels / YouTube Shorts with a strong call-to-action.
+- "hashtags": Array of 10-15 trending hashtags relevant to the topic.
+- "full_transcript": The complete spoken dialogue within this timestamp window.
+```
 
-# Expose extracted clips for instant streaming
+### Part 3: Backend Section Extractor Service (`backend/app/services/clip_extractor.py`)
+Uses `yt-dlp` Range Requests to download **ONLY** the 45s section:
+```python
+cmd = [
+    "yt-dlp",
+    "--download-sections", f"*{start_fmt}-{end_fmt}",
+    "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
+    "--force-keyframes-at-cuts",
+    "-o", f"media/clips/{clip_id}.mp4",
+    video_url
+]
+```
+
+### Part 4: FastAPI Static Media Mount (`backend/app/main.py`)
+Mount static route so the phone can stream the preview MP4s:
+```python
 app.mount("/media/clips", StaticFiles(directory="media/clips"), name="clips")
 ```
 
-### Part 3: Mobile Card Video Player (`mobile/src/screens/CarouselScreen.tsx`)
-Each clip card in the carousel includes an embedded video player:
-* **Play / Pause button:** Tap to play the 45s audio and video directly in the card.
-* **Duration badge:** e.g. `00:12 - 01:02 (50s)`.
-* **Mute / Unmute toggle.**
-* **Select Button:** "✂️ Edit This Clip" to send the chosen video into the Editor Studio.
+### Part 5: Mobile Interactive Video & Social Card (`CarouselScreen.tsx`)
+Each card in Screen 2 includes:
+* **Embedded Video Player:** Tap to Play/Pause the actual audio/video.
+* **Expandable Social Kit Drawer:**
+  - View full spoken transcript.
+  - View AI caption and hashtags.
+  - **"📋 Copy Social Kit" button:** Copies formatted caption + hashtags to phone clipboard in 1 tap.
+* **"✂️ Select & Edit" button:** Opens Screen 3 with this video clip pre-loaded.
 
 ---
 
-## 5. Step-by-Step Implementation Roadmap
+## 6. Phased Implementation Roadmap & Verification Checkpoints
 
-### 📍 Step 1: Backend Clip Section Extractor Service
-* **Deliverable:** Implement `backend/app/services/clip_extractor.py` utilizing `yt-dlp` with `--download-sections`.
-* **Testing Checkpoint (`EXT-T1`):** Run standalone test cutting 30s of video `vHwchNO-bOE`. Verify generated file is under 6MB and plays cleanly with synced audio.
+```mermaid
+flowchart TD
+    S1["Step 1: Backend Social Kit & Transcript in Gemini Prompt"] --> S2["Step 2: Backend Range Trimming Service (yt-dlp)"]
+    S2 --> S3["Step 3: FastAPI Static Media Stream Endpoint"]
+    S3 --> S4["Step 4: Mobile UI Video Player & One-Tap Copy Drawer"]
+    S4 --> S5["Step 5: End-to-End Phone Testing & Verification"]
+```
 
-### 📍 Step 2: FastAPI Async Section Endpoint & URL Injection
-* **Deliverable:** Update `POST /api/v1/analyze` to trigger section extraction in parallel background tasks and return `preview_url` (e.g. `https://.../media/clips/{clip_id}.mp4`).
-* **Testing Checkpoint (`EXT-T2`):** Curl the API; verify `preview_url` returns HTTP 200 and video header `Content-Type: video/mp4`.
-
-### 📍 Step 3: Mobile Carousel Video Player Integration
-* **Deliverable:** Upgrade `mobile/src/screens/CarouselScreen.tsx` to include inline video playback controls for each of the 3 cards.
-* **Testing Checkpoint (`EXT-T3`):** Tap Play on Card 1, verify video plays on phone screen; tap Card 2, verify Card 1 pauses and Card 2 plays.
-
-### 📍 Step 4: Selection Gate & Editor Handoff
-* **Deliverable:** When user taps "✂️ Edit This Clip", hand off the exact trimmed MP4 URI and word timestamps into `EditorScreen.tsx`.
-* **Testing Checkpoint (`EXT-T4`):** Confirm Editor Screen opens with the selected clip's exact footage pre-loaded in the preview box.
+| Step | Component | Implementation Task | Verification Test Checkpoint |
+| :---: | :--- | :--- | :--- |
+| **Step 1** | **Backend Gemini AI** | Add `social_kit` (captions, hashtags, transcript) to prompt & schema | Curl `/analyze`: Verify response contains `caption`, 10 `hashtags`, and `full_transcript` |
+| **Step 2** | **Backend Extractor** | Build `clip_extractor.py` using `yt-dlp --download-sections` | Test cutting 30s of video `vHwchNO-bOE`: Verify file size <6MB in `media/clips/` |
+| **Step 3** | **Media Stream API** | Mount `FastAPI StaticFiles` on `/media/clips/` and inject URLs into response | Open preview URL in mobile browser: Plays 45s MP4 with clear audio |
+| **Step 4** | **Mobile Video Card** | Add video player + "Copy Social Kit" drawer to `CarouselScreen.tsx` | Tap Play on card: Video plays on phone screen; Tap Copy: Caption copied to clipboard |
+| **Step 5** | **Editor Handoff** | Send selected clip MP4 and word timestamps to `EditorScreen.tsx` | Verify Editor Screen opens with exact video footage pre-loaded |
 
 ---
 
-## 6. Verification & Safety Guarantees
+## 7. Storage, Cost & Performance Guarantees
 
 > [!IMPORTANT]
-> **Bandwidth & Storage Protection:**  
-> The section extractor targets `720p` resolution for preview clips. This keeps the file size around **4MB–6MB**, ensuring instant loading even on 4G/5G mobile networks without buffering.
+> **Zero Server GPU Cost:**  
+> The section extractor runs on CPU in a few seconds using `yt-dlp` stream copying (`-c copy` / lightweight re-encode). No expensive cloud GPU instances are required.
 
 > [!TIP]
-> **Automatic Cache Cleanup:**  
-> Extracted preview files in `backend/media/clips/` are temporary. A background cron job deletes preview files older than 2 hours to keep server disk usage close to zero.
+> **Creator Convenience:**  
+> By providing the caption, viral hashtags, and full spoken transcript right when selecting the video, creators save 10–15 minutes of manual copy-writing when posting to Instagram Reels, YouTube Shorts, and TikTok.
