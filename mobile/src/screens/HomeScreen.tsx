@@ -107,7 +107,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onClipsFound, userId }) 
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#000" />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator color="#000" style={{ marginRight: 8 }} />
+              <Text style={styles.primaryButtonText}>AI Finding Hooks (~30s)...</Text>
+            </View>
           ) : (
             <Text style={styles.primaryButtonText}>✨ Find Viral Moments</Text>
           )}

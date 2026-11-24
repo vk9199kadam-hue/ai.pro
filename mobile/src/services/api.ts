@@ -1,16 +1,33 @@
 import axios from 'axios';
 import { AnalyzeResponse, RenderManifest } from '../types';
 
-// Connects to local Mac backend over Wi-Fi (change to Oracle IP 130.210.123.13 after cloud deployment)
-const API_BASE_URL = 'http://10.111.23.89:8000/api/v1';
+// Primary: Public HTTPS Tunnel (works on 5G mobile data, personal hotspot, and any Wi-Fi)
+// Secondary: Local Mac Wi-Fi IP fallback
+const TUNNEL_URL = 'https://better-llamas-pay.loca.lt/api/v1';
+const LOCAL_URL = 'http://10.111.23.89:8000/api/v1';
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 15000,
+  baseURL: TUNNEL_URL,
+  timeout: 120000, // 2 minutes: AI transcript and hook analysis takes ~30-60s
   headers: {
     'Content-Type': 'application/json',
+    'bypass-tunnel-reminder': 'true',
   },
 });
+
+// Resilient Fallback: If tunnel fails, immediately retry on local Wi-Fi IP
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error.config;
+    if (config && !config.__isRetry && config.baseURL === TUNNEL_URL) {
+      config.__isRetry = true;
+      config.baseURL = LOCAL_URL;
+      return axios(config);
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const analyzeYouTubeLink = async (url: string, numClips: number = 3): Promise<AnalyzeResponse> => {
   const response = await apiClient.post<AnalyzeResponse>('/analyze', {
