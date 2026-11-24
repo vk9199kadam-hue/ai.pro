@@ -5,12 +5,31 @@ ENV/
 
 # Environment variables
 .env
+*.env
+
+# SQLite and DB files
+*.db
+*.sqlite3
+app.db
 
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# Node / React Native
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Android build outputs
+android/app/build/
+android/.gradle/
+android/build/
+*.apk
+*.aab
 
 # Output media files
 output/
@@ -19,3 +38,4 @@ output/
 # OS files
 .DS_Store
 Thumbs.db
+

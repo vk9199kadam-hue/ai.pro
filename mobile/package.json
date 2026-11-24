@@ -1,0 +1,26 @@
+{
+  "name": "ai-viral-shorts-mobile",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "build": "eas build --platform android"
+  },
+  "dependencies": {
+    "expo": "~52.0.0",
+    "expo-status-bar": "~2.0.0",
+    "react": "18.3.1",
+    "react-native": "0.76.5",
+    "expo-image-picker": "~16.0.0",
+    "expo-media-library": "~17.0.0",
+    "expo-linear-gradient": "~14.0.0",
+    "axios": "^1.7.9"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@types/react": "~18.3.12",
+    "typescript": "^5.3.3"
+  },
+  "private": true
+}
