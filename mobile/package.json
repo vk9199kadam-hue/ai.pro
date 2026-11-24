@@ -1,7 +1,7 @@
 {
   "name": "ai-viral-shorts-mobile",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
