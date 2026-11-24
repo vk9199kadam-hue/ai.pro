@@ -1,12 +1,12 @@
 import axios from 'axios';
 import { AnalyzeResponse, RenderManifest } from '../types';
 
-// If running on phone with Oracle VM, use public IP. Falls back gracefully if offline.
-const API_BASE_URL = 'http://130.210.123.13:8000/api/v1';
+// Connects to local Mac backend over Wi-Fi (change to Oracle IP 130.210.123.13 after cloud deployment)
+const API_BASE_URL = 'http://10.111.23.89:8000/api/v1';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 4000, // 4-second fast timeout so the UI never hangs
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
