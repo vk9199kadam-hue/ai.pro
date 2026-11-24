@@ -36,7 +36,9 @@ android/build/
 
 # Output media files
 output/
+backend/media/
 *.part
+*.mp4
 
 # OS files
 .DS_Store

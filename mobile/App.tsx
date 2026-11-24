@@ -32,7 +32,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0D0F15" />
+      <StatusBar barStyle="light-content" />
       {currentScreen === 'HOME' && (
         <HomeScreen onClipsFound={handleClipsFound} userId={userId} />
       )}

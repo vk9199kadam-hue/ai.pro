@@ -13,6 +13,9 @@
         "READ_EXTERNAL_STORAGE",
         "INTERNET"
       ]
-    }
+    },
+    "plugins": [
+      "expo-video"
+    ]
   }
 }

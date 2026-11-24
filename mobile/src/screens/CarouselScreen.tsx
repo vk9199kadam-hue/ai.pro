@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Share } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { ViralClip } from '../types';
 
 interface CarouselScreenProps {
@@ -7,6 +8,27 @@ interface CarouselScreenProps {
   onSelectClip: (clip: ViralClip) => void;
   onBack: () => void;
 }
+
+const ClipVideoPlayerItem: React.FC<{ videoUrl: string; onStop: () => void }> = ({ videoUrl, onStop }) => {
+  const player = useVideoPlayer(videoUrl, (p) => {
+    p.loop = true;
+    p.play();
+  });
+
+  return (
+    <View style={styles.activeVideoContainer}>
+      <VideoView
+        style={styles.activeVideoView}
+        player={player}
+        nativeControls={true}
+        contentFit="contain"
+      />
+      <TouchableOpacity style={styles.closeVideoButton} onPress={onStop}>
+        <Text style={styles.closeVideoText}>✕ Pause & Close Preview</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 export const CarouselScreen: React.FC<CarouselScreenProps> = ({ clips, onSelectClip, onBack }) => {
   const [activePlayingClip, setActivePlayingClip] = useState<number | null>(null);
@@ -59,6 +81,12 @@ export const CarouselScreen: React.FC<CarouselScreenProps> = ({ clips, onSelectC
           const isTranscriptOpen = !!expandedTranscript[item.clip_number];
           const kit = item.social_kit;
 
+          // Resolve streaming MP4 URL
+          const BASE_STREAM_URL = 'https://clipsnap-ai.loca.lt';
+          const streamUrl = item.preview_url && item.preview_url.startsWith('http')
+            ? item.preview_url
+            : `${BASE_STREAM_URL}${item.preview_url || `/media/clips/vHwchNO-bOE_${item.clip_number}.mp4`}`;
+
           return (
             <View style={styles.card}>
               {/* Header: Score & Timestamp */}
@@ -74,22 +102,27 @@ export const CarouselScreen: React.FC<CarouselScreenProps> = ({ clips, onSelectC
               {/* Hook Title */}
               <Text style={styles.hookTitle}>"{item.hook_title}"</Text>
 
-              {/* 🎬 Video Preview Box */}
-              <TouchableOpacity 
-                style={[styles.videoPreviewBox, isPlaying && styles.videoPreviewBoxActive]} 
-                onPress={() => togglePlay(item.clip_number)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.videoPlayerFrame}>
-                  <Text style={styles.videoIcon}>{isPlaying ? '⏸️' : '▶️'}</Text>
-                  <Text style={styles.videoStatusText}>
-                    {isPlaying ? 'Playing 45s Cut Preview...' : 'Tap to Watch Video Clip'}
-                  </Text>
-                  <View style={styles.videoTimeTag}>
-                    <Text style={styles.videoTimeTagText}>{item.start_time_formatted} - {item.end_time_formatted}</Text>
+              {/* 🎬 Real Video Player & Preview */}
+              {isPlaying ? (
+                <ClipVideoPlayerItem 
+                  videoUrl={streamUrl} 
+                  onStop={() => setActivePlayingClip(null)} 
+                />
+              ) : (
+                <TouchableOpacity 
+                  style={styles.videoPreviewBox} 
+                  onPress={() => togglePlay(item.clip_number)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.videoPlayerFrame}>
+                    <Text style={styles.videoIcon}>▶️</Text>
+                    <Text style={styles.videoStatusText}>Tap to Watch Video Clip with Sound</Text>
+                    <View style={styles.videoTimeTag}>
+                      <Text style={styles.videoTimeTagText}>{item.start_time_formatted} - {item.end_time_formatted}</Text>
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              )}
 
               {/* Attention Hook Quote */}
               <View style={styles.quoteBox}>
@@ -167,14 +200,19 @@ const styles = StyleSheet.create({
   timeBadge: { color: '#8E9AA8', fontSize: 13, fontWeight: '600' },
   hookTitle: { color: '#FFF', fontSize: 18, fontWeight: '800', marginBottom: 12, lineHeight: 24 },
 
-  /* Video Preview Box */
-  videoPreviewBox: { height: 140, backgroundColor: '#090B0E', borderRadius: 12, marginBottom: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#232938', justifyContent: 'center', alignItems: 'center' },
-  videoPreviewBoxActive: { borderColor: '#FFE600', backgroundColor: '#111622' },
+  /* Video Preview Box (Placeholder) */
+  videoPreviewBox: { height: 160, backgroundColor: '#090B0E', borderRadius: 12, marginBottom: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#232938', justifyContent: 'center', alignItems: 'center' },
   videoPlayerFrame: { alignItems: 'center' },
-  videoIcon: { fontSize: 36, marginBottom: 6 },
+  videoIcon: { fontSize: 40, marginBottom: 8 },
   videoStatusText: { color: '#FFE600', fontWeight: '700', fontSize: 13 },
   videoTimeTag: { marginTop: 6, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   videoTimeTagText: { color: '#A0AEC0', fontSize: 11, fontWeight: '600' },
+
+  /* Active Real Video Player View */
+  activeVideoContainer: { height: 220, backgroundColor: '#000', borderRadius: 12, marginBottom: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#FFE600' },
+  activeVideoView: { width: '100%', height: 180 },
+  closeVideoButton: { height: 40, backgroundColor: '#1A202C', justifyContent: 'center', alignItems: 'center' },
+  closeVideoText: { color: '#CBD5E1', fontSize: 12, fontWeight: '700' },
 
   quoteBox: { backgroundColor: '#0D0F15', borderRadius: 10, padding: 12, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#FFE600' },
   quoteLabel: { color: '#7E8B9B', fontSize: 11, fontWeight: '600', marginBottom: 3 },
