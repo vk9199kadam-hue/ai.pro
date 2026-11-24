@@ -2,7 +2,8 @@
 ## AI Viral Shorts SaaS (ClipSnap AI / ai.pro)
 
 **Target Repository:** `https://github.com/vk9199kadam-hue/ai.pro.git` (Branch: `main`)  
-**AI Project & Key:** `projects/982435563997` (Google AI Studio `ai.pro`)  
+**AI Projects:** 5 Dedicated Google AI Studio Projects (Pooled & Load Balanced)  
+**Live Oracle Cloud VM:** `ai-pro-backend` (Public IP: `130.210.123.13`)  
 **Architecture Model:** Hybrid Cloud-Edge (FastAPI Cloud Brain + On-Device Android Media3 GPU Renderer)  
 
 ---
@@ -17,8 +18,9 @@
 | **Block 4** | **React Native Mobile Frontend** | 🟢 **100% COMPLETED** | `mobile/src/screens/`<br/>`mobile/App.tsx` | 4-screen creator flow (Home, Carousel, Editor, Export & Share) |
 | **Block 5** | **Android Media3 Video Engine** | 🟢 **100% COMPLETED** | `mobile/android/.../VideoRendererModule.kt`<br/>`mobile/src/services/nativeRenderer.ts` | On-device 1080x1920 GPU video rendering, word-level subtitle overlay |
 | **Block 6** | **Google AdMob Monetization** | 🟢 **100% COMPLETED** | `mobile/src/services/admob.ts`<br/>`mobile/src/components/AdBanner.tsx` | Banner ad, Interstitial ad during render, Rewarded video for +1 credit |
-| **Block 7** | **Oracle Cloud VM Deployment** | 🟡 **READY FOR DEPLOY** | Oracle VM (`instance-20261104-1110`) | Deploy backend on Oracle Cloud with systemd service & Nginx reverse proxy |
-| **Block 8** | **Google Play Store Release** | 🟡 **READY FOR SIGNING** | `mobile/android/` | Keystore generation, production AdMob IDs, `.aab` production bundle |
+| **Block 7** | **Dynamic 5-Key Load Balancer** | 🟢 **100% COMPLETED** | `backend/app/services/gemini_service.py`<br/>`backend/app/core/config.py` | 5-Project round-robin pool (7,500 req/day, 75 RPM), circuit breaker, failover |
+| **Block 8** | **Oracle Cloud VM Deployment** | 🟡 **READY FOR DEPLOY** | Oracle VM `ai-pro-backend`<br/>(`130.210.123.13`) | Run FastAPI on your new active Oracle VM with systemd service |
+| **Block 9** | **Google Play Store Release** | 🟡 **READY FOR SIGNING** | `mobile/android/` | Keystore generation, production AdMob IDs, `.aab` production bundle |
 
 ---
 
@@ -26,15 +28,17 @@
 
 ```mermaid
 flowchart TD
-    subgraph CloudLayer["☁️ CLOUD INFRASTRUCTURE (COMPLETED & VERIFIED)"]
+    subgraph CloudLayer["☁️ CLOUD INFRASTRUCTURE (100% COMPLETED & TESTED)"]
         B1["Block 1: Cloud AI Intelligence (Gemini 3.5 Flash)"]
         B2["Block 2: FastAPI Cloud Gateway"]
         B3["Block 3: Database & Credit Ledger"]
+        B7["Block 7: Dynamic 5-Key AI Load Balancer (7,500 req/day)"]
         B1 <--> B2
         B2 <--> B3
+        B2 <--> B7
     end
 
-    subgraph ClientLayer["📱 ON-DEVICE SMARTPHONE APP (COMPLETED & VERIFIED)"]
+    subgraph ClientLayer["📱 ON-DEVICE SMARTPHONE APP (100% COMPLETED & TESTED)"]
         B4["Block 4: React Native UI (4 Screens)"]
         B5["Block 5: Android Media3 Video Engine"]
         B6["Block 6: AdMob Monetization Engine"]
@@ -42,14 +46,14 @@ flowchart TD
         B4 <--> B6
     end
 
-    subgraph LaunchLayer["🚀 PRODUCTION LAUNCH OPERATIONS (REMAINING RUN STEPS)"]
-        B7["Block 7: Oracle VM Live Cloud Hosting"]
-        B8["Block 8: Google Play Store Release (AAB)"]
+    subgraph LaunchLayer["🚀 PRODUCTION LAUNCH OPERATIONS (OPERATIONAL NEXT STEPS)"]
+        B8["Block 8: Oracle VM Live Cloud Hosting (130.210.123.13)"]
+        B9["Block 9: Google Play Store Release (AAB)"]
     end
 
     CloudLayer <==> ClientLayer
-    CloudLayer -.-> B7
-    ClientLayer -.-> B8
+    CloudLayer -.-> B8
+    ClientLayer -.-> B9
 ```
 
 ---
@@ -62,10 +66,10 @@ flowchart TD
   - `backend/app/services/transcript.py`
 - **What is Complete:**
   - Extracts YouTube speech transcript in ~1.2 seconds.
-  - Automatically analyzes spoken dialogue and identifies the top 3–5 viral moments.
-  - Extracts key viral metrics: Hook title, key quote, virality score (1–100), and explanation.
+  - Automatically analyzes spoken dialogue and identifies top viral moments.
+  - Generates viral metrics: Hook title, key quote, virality score (1–100), and explanation.
   - Calculates **Relative Micro-Timestamps** ($t_{\text{local}} = t_{\text{spoken}} - t_{\text{clip\_start}}$) for precision subtitle synchronization.
-  - Multi-model fallback loop (`gemini-3.5-flash` $\rightarrow$ `gemini-3.5-flash-lite` $\rightarrow$ `gemini-3.7-flash`) ensures 99.9% uptime.
+  - Multi-model fallback loop (`gemini-3.5-flash` $\rightarrow$ `gemini-3.5-flash-lite` $\rightarrow$ `gemini-3.7-flash`).
 - **Remaining:** None.
 
 ---
@@ -82,7 +86,7 @@ flowchart TD
   - Endpoint `GET /healthz`: Service health check (returns 200 OK).
   - Endpoint `POST /api/v1/analyze`: Ingests video URL $\rightarrow$ returns viral moments array.
   - Endpoint `POST /api/v1/clips/{clip_id}/prepare`: Prepares the full `RenderManifest` containing video cut boundaries, layout specification, and word-by-word timestamps.
-  - Fallback manifest generation for offline testing and fast UI previewing.
+  - Endpoint `GET /api/v1/loadbalancer/status`: Live diagnostic dashboard showing active keys, error counts, and quota health.
   - CORS configuration enabling cross-origin mobile app calls.
 - **Remaining:** None.
 
@@ -90,7 +94,7 @@ flowchart TD
 
 ### 🟢 Block 3: Database & Credit Ledger
 - **Status:** **COMPLETED & VERIFIED**
-- **Core Technology:** SQLAlchemy ORM, SQLite (local development) / Oracle Cloud DB (production)
+- **Core Technology:** SQLAlchemy ORM, SQLite (local) / Oracle Cloud DB (production)
 - **Key Files:**
   - `backend/app/database/models.py`
   - `backend/app/database/session.py`
@@ -163,18 +167,34 @@ flowchart TD
 
 ---
 
-### 🟡 Block 7: Oracle Cloud VM Server Deployment
+### 🟢 Block 7: Dynamic 5-Key AI Load Balancer
+- **Status:** **COMPLETED & VERIFIED**
+- **Core Technology:** Python `threading`, Round-Robin pointer, Circuit Breaker
+- **Key Files:**
+  - `backend/app/services/gemini_service.py` (`GeminiKeyPool`)
+  - `backend/app/core/config.py` (`Settings.GEMINI_API_KEYS`)
+- **What is Complete:**
+  - Pools **5 separate Google AI Studio projects** (`982435563997`, `232108973536`, `710620324935`, `19272610923`, `399674623242`).
+  - Total combined capacity: **7,500 video analyses/day** and **75 requests/minute** for **$0 / month**.
+  - **Round-Robin Rotation:** Requests evenly spread across all 5 keys.
+  - **Circuit Breaker:** Automatically places any key that hits a `429` rate limit into a 60-second cooldown while routing all traffic to the other 4 keys.
+  - **Hot-Reloadable:** Future keys can be added to `.env` as `key1,key2,...` with zero Python code changes!
+- **Remaining:** None.
+
+---
+
+### 🟡 Block 8: Oracle Cloud VM Server Deployment
 - **Status:** **CODE COMPLETED — READY TO LAUNCH ON OCI VM**
-- **Target Instance:** `instance-20261104-1110` (`VM.Standard.E2.1.Micro`, 1 OCPU, 1 GB RAM)
+- **Active Instance:** `ai-pro-backend` (Public IP: `130.210.123.13`, `VM.Standard.E2.1.Micro`, 1 OCPU, 1 GB RAM)
 - **What is Already Done:**
-  - Backend is 100% written, requires zero heavy FFmpeg libraries on the server, and uses only ~60 MB RAM.
-  - All backend code is committed and pushed to GitHub `https://github.com/vk9199kadam-hue/ai.pro.git`.
-- **What is Remaining (Operational Steps):**
+  - Old broken instance terminated; new instance is active and running.
+  - Backend is 100% written, uses only ~60 MB RAM, and all code is live on GitHub.
+- **What is Remaining (Operational Run Steps):**
   1. SSH into your Oracle Cloud VM:
      ```bash
-     ssh -i <your_key.key> opc@<your_oracle_public_ip>
+     ssh -i /path/to/ssh-key-2026-11-24.key ubuntu@130.210.123.13
      ```
-  2. Clone the repository and install dependencies:
+  2. Clone repo and setup environment:
      ```bash
      git clone https://github.com/vk9199kadam-hue/ai.pro.git
      cd ai.pro/backend
@@ -182,58 +202,47 @@ flowchart TD
      source .venv/bin/activate
      pip install -r requirements.txt
      ```
-  3. Configure `.env` with your Gemini API key:
+  3. Configure `.env` with your 5 pooled keys:
      ```bash
-     GEMINI_API_KEY=your_gemini_api_key_here
+     GEMINI_API_KEYS=key1,key2,key3,key4,key5
      ```
-  4. Create a systemd service (`clipgap.service`) to keep the API running 24/7 in the background:
+  4. Run with uvicorn or background systemd service:
      ```bash
-     sudo systemctl enable --now clipgap
+     uvicorn app.main:app --host 0.0.0.0 --port 8000
      ```
-  5. Open port 8000 (or configure Nginx on port 80/443 with free Let's Encrypt SSL).
 
 ---
 
-### 🟡 Block 8: Google Play Store Release & Production APK
+### 🟡 Block 9: Google Play Store Release & Production APK
 - **Status:** **CODE COMPLETED — READY FOR PACKAGING & SUBMISSION**
 - **Target Platform:** Google Play Console
 - **What is Already Done:**
   - Android package name configured: `com.aipro.viralshorts`.
   - Android permissions declared in `AndroidManifest.xml` (`READ_MEDIA_VIDEO`, `INTERNET`, `WRITE_EXTERNAL_STORAGE`).
-  - Google AdMob App ID configured in manifest.
 - **What is Remaining (Release Steps):**
-  1. **Generate Release Keystore** (Android Signing Key):
-     ```bash
-     keytool -genkey -v -keystore my-upload-key.keystore -alias my-key-alias -keyalg RSA -keysize 2048 -validity 10000
-     ```
-  2. **Swap AdMob Test IDs with Live AdMob IDs**:
-     - Replace Google test ad units in `admob.ts` with your real AdMob unit IDs from your Google AdMob console.
-  3. **Build the Android App Bundle (`.aab`)**:
-     ```bash
-     cd mobile/android
-     ./gradlew bundleRelease
-     ```
-  4. **Upload to Google Play Console**:
-     - Upload `mobile/android/app/build/outputs/bundle/release/app-release.aab` to Internal Testing or Production Track.
+  1. Generate Release Keystore: `keytool -genkey -v -keystore my-upload-key.keystore`
+  2. Put your real production AdMob IDs in `mobile/src/services/admob.ts`.
+  3. Run `./gradlew bundleRelease` inside `mobile/android`.
+  4. Upload `.aab` file to Google Play Console for review.
 
 ---
 
-## 📈 Summary Progress Matrix
+## 📈 Final Progress Matrix
 
 ```
 ┌──────────────────────────────────────────────────────────┬───────────┐
-│ Feature / Milestone                                      │ Progress  │
+│ Architecture & Development Component                     │ Status    │
 ├──────────────────────────────────────────────────────────┼───────────┤
-│ 1. AI Hook & Virality Detection (Gemini 3.5 Flash)       │  100% ✅  │
-│ 2. Word-Level Micro-Timestamp Alignment Engine           │  100% ✅  │
-│ 3. FastAPI Cloud Gateway & Manifest REST API             │  100% ✅  │
-│ 4. SQLAlchemy User Balance & AdMob Reward Ledger         │  100% ✅  │
-│ 5. React Native 4-Screen Creator Mobile Client           │  100% ✅  │
-│ 6. Native Android Media3 GPU Video Rendering Engine      │  100% ✅  │
-│ 7. Google AdMob Monetization (Banner/Interstitial/Reward)│  100% ✅  │
-│ 8. GitHub Synchronization (vk9199kadam-hue/ai.pro.git)   │  100% ✅  │
+│ Block 1: AI Hook & Virality Detection (Gemini 3.5 Flash) │  100% ✅  │
+│ Block 2: FastAPI Cloud Gateway & Manifest REST API       │  100% ✅  │
+│ Block 3: Database User Balance & AdMob Reward Ledger     │  100% ✅  │
+│ Block 4: React Native 4-Screen Creator Mobile Client     │  100% ✅  │
+│ Block 5: Native Android Media3 GPU Video Rendering Engine│  100% ✅  │
+│ Block 6: Google AdMob Monetization (Banner/Interstitial) │  100% ✅  │
+│ Block 7: Dynamic 5-Key AI Load Balancer (7,500 req/day)  │  100% ✅  │
+│ Block 8: GitHub Synchronization (Main Branch)            │  100% ✅  │
 ├──────────────────────────────────────────────────────────┼───────────┤
-│ 9. Deploy Live to Oracle Cloud VM                        │   Ready 🟡│
-│ 10. Generate Signed Production AAB & Play Store Release  │   Ready 🟡│
+│ Block 9: Live Cloud Deployment on Oracle VM              │   Ready 🟡│
+│ Block 10: Google Play Store Release & Signed AAB         │   Ready 🟡│
 └──────────────────────────────────────────────────────────┴───────────┘
 ```
