@@ -21,7 +21,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onClipsFound, userId }) 
   }, [userId]);
 
   const handleAnalyze = async () => {
-    if (!url.trim()) {
+    const cleanUrl = url.trim().replace(/^['"]+|['"]+$/g, '');
+    if (!cleanUrl) {
       Alert.alert('Missing URL', 'Please paste a valid YouTube video link.');
       return;
     }
@@ -36,14 +37,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onClipsFound, userId }) 
 
     setLoading(true);
     try {
-      const data = await analyzeYouTubeLink(url);
+      const data = await analyzeYouTubeLink(cleanUrl);
       if (data.clips && data.clips.length > 0) {
-        onClipsFound(data.clips, url);
+        onClipsFound(data.clips, cleanUrl);
       } else {
         Alert.alert('No Viral Moments Found', 'Try another video with clear spoken audio.');
       }
     } catch (err: any) {
-      Alert.alert('Analysis Failed', err.response?.data?.detail || 'Could not analyze video. Check your connection.');
+      const errorMsg = err.response?.data?.detail || err.message || 'Could not analyze video. Check your connection.';
+      Alert.alert('Analysis Failed', errorMsg);
     } finally {
       setLoading(false);
     }
