@@ -3,7 +3,7 @@ import { AnalyzeResponse, RenderManifest } from '../types';
 
 // Primary: Public HTTPS Tunnel (works on 5G mobile data, personal hotspot, and any Wi-Fi)
 // Secondary: Local Mac Wi-Fi IP fallback
-const TUNNEL_URL = 'https://better-llamas-pay.loca.lt/api/v1';
+const TUNNEL_URL = 'https://clipsnap-ai.loca.lt/api/v1';
 const LOCAL_URL = 'http://10.111.23.89:8000/api/v1';
 
 export const apiClient = axios.create({
