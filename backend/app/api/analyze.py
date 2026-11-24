@@ -124,3 +124,13 @@ async def prepare_clip_manifest(clip_id: str, request: PrepareClipRequest):
         creator_tag=request.creator_tag,
         words=clip.words or []
     )
+
+@router.get("/loadbalancer/status")
+async def get_load_balancer_status():
+    """
+    Returns real-time status, health, and throughput metrics 
+    for the Gemini API multi-key pool.
+    """
+    from app.services.gemini_service import key_pool
+    return key_pool.get_status()
+
