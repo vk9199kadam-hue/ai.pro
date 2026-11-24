@@ -10,7 +10,13 @@ interface CarouselScreenProps {
 }
 
 const ClipVideoPlayerItem: React.FC<{ videoUrl: string; onStop: () => void }> = ({ videoUrl, onStop }) => {
-  const player = useVideoPlayer(videoUrl, (p) => {
+  const player = useVideoPlayer({
+    uri: videoUrl,
+    headers: {
+      'bypass-tunnel-reminder': 'true',
+      'User-Agent': 'ClipSnapMobile/1.0',
+    },
+  }, (p) => {
     p.loop = true;
     p.play();
   });
