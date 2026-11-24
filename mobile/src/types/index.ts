@@ -38,3 +38,4 @@ export interface RenderManifest {
   creator_tag?: string;
   words: WordTimestamp[];
 }
+

@@ -47,3 +47,4 @@ class RenderManifest(BaseModel):
     caption_style: str
     creator_tag: Optional[str] = None
     words: List[WordTimestamp]
+

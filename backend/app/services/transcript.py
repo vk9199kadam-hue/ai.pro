@@ -77,3 +77,4 @@ def extract_relative_words(raw_data: List[Dict[str, Any]], start_sec: float, end
                         "highlight": True
                     })
     return clip_words
+

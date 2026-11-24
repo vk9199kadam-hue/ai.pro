@@ -66,3 +66,4 @@ Respond ONLY in valid JSON matching this schema:
             continue
             
     raise RuntimeError("All Gemini model attempts failed.")
+

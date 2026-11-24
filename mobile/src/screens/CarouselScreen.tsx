@@ -77,3 +77,4 @@ const styles = StyleSheet.create({
   selectButton: { backgroundColor: '#FFE600', borderRadius: 10, paddingVertical: 13, alignItems: 'center' },
   selectButtonText: { color: '#000', fontWeight: '700', fontSize: 14 }
 });
+

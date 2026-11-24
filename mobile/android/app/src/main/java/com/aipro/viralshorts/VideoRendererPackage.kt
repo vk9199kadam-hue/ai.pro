@@ -16,3 +16,4 @@ class VideoRendererPackage : ReactPackage {
         return emptyList()
     }
 }
+

@@ -6,3 +6,4 @@ google-genai>=1.40.0
 youtube-transcript-api>=1.2.0
 python-dotenv>=1.0.0
 python-multipart>=0.0.9
+

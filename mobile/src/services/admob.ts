@@ -39,3 +39,4 @@ export async function showRewardedVideoAd(): Promise<boolean> {
     }, 2000);
   });
 }
+

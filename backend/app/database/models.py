@@ -69,3 +69,4 @@ class DeviceExport(Base):
     profile_used = Column(String(20), default="STD_1080P")  # 'LOW_720P', 'STD_1080P', 'HIGH_1080P60'
     render_status = Column(String(20), default="STARTED")  # 'STARTED', 'COMPLETED', 'FAILED'
     created_at = Column(DateTime, default=datetime.utcnow)
+

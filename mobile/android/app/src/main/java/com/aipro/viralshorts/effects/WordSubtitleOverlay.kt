@@ -72,3 +72,4 @@ class WordSubtitleOverlay(
         canvas.drawText(phrase, width / 2f, textY, paint)
     }
 }
+

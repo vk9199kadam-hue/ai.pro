@@ -65,3 +65,4 @@ export async function renderVideoOnDevice(
     }, 400); // 10 steps x 400ms = 4 seconds total
   });
 }
+

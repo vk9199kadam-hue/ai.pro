@@ -93,3 +93,4 @@ def deduct_credit_for_export(req: DeductCreditRequest, db: Session = Depends(get
     db.add(tx)
     db.commit()
     return BalanceResponse(user_id=req.user_id, balance=credit.balance)
+

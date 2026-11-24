@@ -50,3 +50,4 @@ export const claimAdRewardCredit = async (userId: string): Promise<number> => {
   });
   return response.data.balance;
 };
+
