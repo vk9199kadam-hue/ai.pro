@@ -1,8 +1,16 @@
 export interface WordTimestamp {
-  word: str;
+  word: string;
   start: number;
   end: number;
   highlight: boolean;
+}
+
+export interface SocialKit {
+  viral_title: string;
+  caption: string;
+  hashtags: string[];
+  hashtags_formatted: string;
+  full_transcript: string;
 }
 
 export interface ViralClip {
@@ -16,6 +24,8 @@ export interface ViralClip {
   viral_score: number;
   virality_reason: string;
   key_quote: string;
+  preview_url?: string;
+  social_kit?: SocialKit;
   words?: WordTimestamp[];
 }
 

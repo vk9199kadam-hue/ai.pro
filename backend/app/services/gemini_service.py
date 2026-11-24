@@ -179,7 +179,10 @@ Respond ONLY in valid JSON matching this schema:
       "duration_seconds": 45.0,
       "viral_score": 95,
       "virality_reason": "Why this moment will get high views/shares",
-      "key_quote": "The exact hook quote that grabs attention"
+      "key_quote": "The exact hook quote that grabs attention",
+      "social_caption": "Engaging 2-sentence description for Instagram Reels / YouTube Shorts with a strong call-to-action",
+      "hashtags": ["#ViralShorts", "#Reels", "#Trending", "#TopicTag1", "#TopicTag2"],
+      "full_transcript": "The complete spoken text during this clip segment"
     }}
   ]
 }}

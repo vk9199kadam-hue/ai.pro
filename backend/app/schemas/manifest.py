@@ -12,6 +12,13 @@ class WordTimestamp(BaseModel):
     end: float    # Normalized relative to clip start
     highlight: bool = True
 
+class SocialKit(BaseModel):
+    viral_title: str
+    caption: str
+    hashtags: List[str]
+    hashtags_formatted: str
+    full_transcript: str
+
 class ViralClip(BaseModel):
     clip_number: int
     hook_title: str
@@ -23,6 +30,8 @@ class ViralClip(BaseModel):
     viral_score: int
     virality_reason: str
     key_quote: str
+    preview_url: Optional[str] = None
+    social_kit: Optional[SocialKit] = None
     words: Optional[List[WordTimestamp]] = None
 
 class AnalyzeResponse(BaseModel):

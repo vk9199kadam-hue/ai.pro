@@ -1,8 +1,9 @@
 import uuid
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from app.schemas.manifest import AnalyzeRequest, AnalyzeResponse, ViralClip, PrepareClipRequest, RenderManifest
+from app.schemas.manifest import AnalyzeRequest, AnalyzeResponse, ViralClip, PrepareClipRequest, RenderManifest, SocialKit
 from app.services.transcript import extract_video_id, get_transcript, format_transcript_with_timestamps, extract_relative_words
 from app.services.gemini_service import analyze_viral_moments
+from app.services.clip_extractor import extract_clip_section
 
 router = APIRouter(tags=["Analysis & Clips"])
 
@@ -11,10 +12,10 @@ CLIPS_CACHE = {}
 TRANSCRIPTS_CACHE = {}
 
 @router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_video(request: AnalyzeRequest):
+async def analyze_video(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     """
     Analyze YouTube video or upload, extract speech transcript, 
-    and call Gemini Flash to identify viral hooks.
+    and call Gemini Flash to identify viral hooks and generate Social Media Kit.
     """
     if request.source_type == "YOUTUBE_URL":
         if not request.url:
@@ -41,7 +42,7 @@ async def analyze_video(request: AnalyzeRequest):
         formatted_text = format_transcript_with_timestamps(raw_transcript)
         TRANSCRIPTS_CACHE[video_id] = raw_transcript
         
-        # 2. Call Gemini Flash via 5-Key Load Balancer (takes ~1.5s)
+        # 2. Call Gemini Flash via 5-Key Load Balancer
         try:
             analysis = analyze_viral_moments(formatted_text, num_clips=request.num_clips)
         except Exception as e:
@@ -54,12 +55,37 @@ async def analyze_video(request: AnalyzeRequest):
             clip_id = f"clip_{uuid.uuid4().hex[:8]}"
             start_s = item["start_time_seconds"]
             end_s = item["end_time_seconds"]
+            clip_num = item["clip_number"]
             
             # Extract word-level timestamps relative to clip cut
             relative_words = extract_relative_words(raw_transcript, start_s, end_s)
             
+            # Assemble Social Media Kit & full transcript
+            raw_tags = item.get("hashtags", ["#ViralShorts", "#Reels", "#Trending", "#Creator"])
+            if isinstance(raw_tags, str):
+                raw_tags = [t.strip() for t in raw_tags.split()]
+            formatted_tags = " ".join([t if t.startswith("#") else f"#{t}" for t in raw_tags])
+            
+            full_text = item.get("full_transcript")
+            if not full_text:
+                full_text = " ".join([w["word"] for w in relative_words]) if relative_words else item.get("key_quote", "")
+                
+            social_kit = SocialKit(
+                viral_title=item.get("hook_title", "Viral Clip"),
+                caption=item.get("social_caption", f"{item.get('key_quote', '')} What do you think? Drop a comment! 👇"),
+                hashtags=raw_tags,
+                hashtags_formatted=formatted_tags,
+                full_transcript=full_text
+            )
+            
+            clip_file_id = f"{video_id}_{clip_num}"
+            preview_relative_path = f"/media/clips/{clip_file_id}.mp4"
+            
+            # Queue background section extraction using yt-dlp / ffmpeg
+            background_tasks.add_task(extract_clip_section, clean_url, start_s, end_s, clip_file_id)
+            
             clip_obj = ViralClip(
-                clip_number=item["clip_number"],
+                clip_number=clip_num,
                 hook_title=item["hook_title"],
                 start_time_seconds=start_s,
                 end_time_seconds=end_s,
@@ -69,6 +95,8 @@ async def analyze_video(request: AnalyzeRequest):
                 viral_score=item.get("viral_score", 90),
                 virality_reason=item.get("virality_reason", ""),
                 key_quote=item.get("key_quote", ""),
+                preview_url=preview_relative_path,
+                social_kit=social_kit,
                 words=relative_words
             )
             
