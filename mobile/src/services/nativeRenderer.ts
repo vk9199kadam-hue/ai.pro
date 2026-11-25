@@ -107,13 +107,9 @@ export async function renderVideoOnDevice(
 
   if (onProgress) onProgress(98);
 
-  // Save the downloaded MP4 file into the phone's native Photos / Gallery!
+  // Save the downloaded MP4 file into the phone's native Photos / Gallery cleanly without Scoped Storage prompts
   try {
     await MediaLibrary.saveToLibraryAsync(result.uri);
-    const asset = await MediaLibrary.createAssetAsync(result.uri);
-    try {
-      await MediaLibrary.createAlbumAsync('ClipSnap AI', asset, false);
-    } catch {}
     console.log('[NativeRenderer] ✅ Rendered 9:16 short saved to phone Gallery successfully!');
   } catch (libErr: any) {
     console.warn('[NativeRenderer] MediaLibrary save notice:', libErr.message);
