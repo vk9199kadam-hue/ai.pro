@@ -20,6 +20,7 @@ class SocialKit(BaseModel):
     full_transcript: str
 
 class ViralClip(BaseModel):
+    clip_id: Optional[str] = None
     clip_number: int
     hook_title: str
     start_time_seconds: float
@@ -48,12 +49,25 @@ class PrepareClipRequest(BaseModel):
 class RenderManifest(BaseModel):
     clip_id: str
     source_url: str
-    trim_start: float
-    trim_end: float
+    trim_start: float = 0.0
+    trim_end: float = 0.0
     target_width: int = 1080
     target_height: int = 1920
-    layout: str = "blurred_fill" # blurred_fill, center_crop
-    caption_style: str
+    layout: str = "blurred_fill" # blurred_fill, center_crop, fit_black
+    caption_style: str = "hype_yellow" # hype_yellow, clean_white, neon_glow
+    captions_enabled: bool = True
     creator_tag: Optional[str] = None
-    words: List[WordTimestamp]
+    hook_text: Optional[str] = None
+    hook_enabled: bool = True
+    watermark_text: Optional[str] = None
+    watermark_enabled: bool = True
+    watermark_position: Optional[str] = "bottom_right"
+    words: List[WordTimestamp] = []
+
+class RenderResponse(BaseModel):
+    rendered_url: str
+    duration_seconds: float
+    width: int = 1080
+    height: int = 1920
+
 

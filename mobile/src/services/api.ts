@@ -1,28 +1,40 @@
 import axios from 'axios';
 import { AnalyzeResponse, RenderManifest } from '../types';
 
-// Primary: Public HTTPS Tunnel (works on 5G mobile data, personal hotspot, and any Wi-Fi)
-// Secondary: Local Mac Wi-Fi IP fallback
-const TUNNEL_URL = 'https://clipsnap-ai.loca.lt/api/v1';
-const LOCAL_URL = 'http://10.111.23.89:8000/api/v1';
+// Direct local Wi-Fi server (same subnet as Metro, 100% reliable, zero tunnel drops)
+export const LOCAL_SERVER_IP = '10.111.23.89:8000';
+export const LOCAL_BASE_URL = `http://${LOCAL_SERVER_IP}`;
+
+// Active public tunnel (fallback for cellular data)
+export const PUBLIC_TUNNEL_URL = 'https://d7d2fbfd66b6a9.app.lhr.life';
+
+// Resolve streaming media URL: Use direct local Wi-Fi connection with full MP4 byte-range support
+export const resolveMediaUrl = (path?: string | null): string => {
+  if (!path) return '';
+  // Extract relative clip path regardless of any previous domain
+  const cleanPath = path.includes('/media/clips/')
+    ? path.substring(path.indexOf('/media/clips/'))
+    : (path.startsWith('/') ? path : `/${path}`);
+
+  return `${LOCAL_BASE_URL}${cleanPath}`;
+};
 
 export const apiClient = axios.create({
-  baseURL: TUNNEL_URL,
+  baseURL: `${LOCAL_BASE_URL}/api/v1`,
   timeout: 120000, // 2 minutes: AI transcript and hook analysis takes ~30-60s
   headers: {
     'Content-Type': 'application/json',
-    'bypass-tunnel-reminder': 'true',
   },
 });
 
-// Resilient Fallback: If tunnel fails, immediately retry on local Wi-Fi IP
+// Resilient Fallback: If local Wi-Fi fails, retry on active public tunnel
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const config = error.config;
-    if (config && !config.__isRetry && config.baseURL === TUNNEL_URL) {
+    if (config && !config.__isRetry) {
       config.__isRetry = true;
-      config.baseURL = LOCAL_URL;
+      config.baseURL = `${PUBLIC_TUNNEL_URL}/api/v1`;
       return axios(config);
     }
     return Promise.reject(error);
@@ -67,4 +79,27 @@ export const claimAdRewardCredit = async (userId: string): Promise<number> => {
   });
   return response.data.balance;
 };
+
+export const checkClipStatus = async (clipFileId: string): Promise<{ ready: boolean; url: string; file_size: number }> => {
+  try {
+    const cleanId = clipFileId.replace(/^.*\/media\/clips\//, '').replace('.mp4', '');
+    const response = await apiClient.get<{ ready: boolean; url: string; file_size: number }>(`/clips/${cleanId}/status`);
+    return response.data;
+  } catch {
+    return { ready: false, url: '', file_size: 0 };
+  }
+};
+
+export const renderEditedVideo = async (
+  manifest: RenderManifest
+): Promise<{ rendered_url: string; duration_seconds: number; width: number; height: number }> => {
+  const response = await apiClient.post<{
+    rendered_url: string;
+    duration_seconds: number;
+    width: number;
+    height: number;
+  }>('/clips/render', manifest);
+  return response.data;
+};
+
 

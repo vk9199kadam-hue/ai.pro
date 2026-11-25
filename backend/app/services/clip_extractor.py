@@ -1,6 +1,7 @@
 import os
 import subprocess
 import logging
+import concurrent.futures
 from typing import Optional
 
 logger = logging.getLogger("clip_extractor")
@@ -11,12 +12,21 @@ VENV_BIN_DIR = os.path.join(os.path.dirname(BASE_DIR), ".venv", "bin")
 
 os.makedirs(MEDIA_CLIPS_DIR, exist_ok=True)
 
+# Parallel thread pool for fast concurrent clip downloading
+CLIP_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+
 def format_timestamp(seconds: float) -> str:
     """Format seconds into HH:MM:SS for yt-dlp / ffmpeg."""
     hrs = int(seconds // 3600)
     mins = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     return f"{hrs:02d}:{mins:02d}:{secs:02d}"
+
+def is_clip_ready(clip_id: str) -> bool:
+    """Check if the clip MP4 exists and has non-trivial size."""
+    clean_id = clip_id.replace(".mp4", "")
+    target = os.path.join(MEDIA_CLIPS_DIR, f"{clean_id}.mp4")
+    return os.path.exists(target) and os.path.getsize(target) > 10000
 
 def extract_clip_section(
     video_source: str, 
@@ -31,8 +41,9 @@ def extract_clip_section(
     output_filename = f"{clip_id}.mp4"
     output_path = os.path.join(MEDIA_CLIPS_DIR, output_filename)
 
-    # If already extracted, return cached file
+    # If already extracted, return cached file immediately
     if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+        print(f"[clip_extractor] Clip {clip_id} already cached ({os.path.getsize(output_path)} bytes)")
         return output_path
 
     start_fmt = format_timestamp(start_sec)
@@ -52,16 +63,24 @@ def extract_clip_section(
     if not os.path.exists(ffmpeg_bin):
         ffmpeg_bin = "ffmpeg"
 
+    # Temporary download path to ensure atomic write
+    temp_output_path = os.path.join(MEDIA_CLIPS_DIR, f"temp_{output_filename}")
+    if os.path.exists(temp_output_path):
+        try:
+            os.remove(temp_output_path)
+        except Exception:
+            pass
+
     # Case A: YouTube URL
     if "youtu" in video_source:
         cmd = [
             ytdlp_bin,
             "--ffmpeg-location", VENV_BIN_DIR,
-            "--extractor-args", "youtube:player_client=android",
+            "--extractor-args", "youtube:player_client=android,web",
             "--download-sections", section_arg,
             "--force-keyframes-at-cuts",
-            "-f", "best[ext=mp4]/best",
-            "-o", output_path,
+            "-f", "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+            "-o", temp_output_path,
             video_source
         ]
     else:
@@ -75,25 +94,27 @@ def extract_clip_section(
             "-c:v", "libx264",
             "-crf", "24",
             "-c:a", "aac",
-            output_path
+            temp_output_path
         ]
 
     try:
-        logger.info(f"Extracting section {section_arg} for clip {clip_id}...")
+        print(f"[clip_extractor] Starting download of section {section_arg} for clip {clip_id}...")
         result = subprocess.run(
             cmd,
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=60
+            timeout=90
         )
-        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
-            logger.info(f"Clip extracted successfully: {output_path} ({os.path.getsize(output_path)} bytes)")
+        if result.returncode == 0 and os.path.exists(temp_output_path) and os.path.getsize(temp_output_path) > 5000:
+            # Atomically rename to final path so reader never sees partial file
+            os.replace(temp_output_path, output_path)
+            print(f"[clip_extractor] ✅ Clip extracted successfully: {output_path} ({os.path.getsize(output_path)} bytes)")
             return output_path
         else:
             stderr_msg = result.stderr.decode("utf-8", errors="ignore")
-            logger.warning(f"Clip extraction failed with code {result.returncode}: {stderr_msg[:300]}")
+            print(f"[clip_extractor] ⚠️ Extraction failed with code {result.returncode}: {stderr_msg[:300]}")
             return None
     except Exception as e:
-        logger.error(f"Error during clip extraction: {str(e)}")
+        print(f"[clip_extractor] ❌ Error during extraction of {clip_id}: {str(e)}")
         return None

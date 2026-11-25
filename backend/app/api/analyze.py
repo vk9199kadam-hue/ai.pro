@@ -1,9 +1,10 @@
 import uuid
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from app.schemas.manifest import AnalyzeRequest, AnalyzeResponse, ViralClip, PrepareClipRequest, RenderManifest, SocialKit
+from app.schemas.manifest import AnalyzeRequest, AnalyzeResponse, ViralClip, PrepareClipRequest, RenderManifest, RenderResponse, SocialKit
 from app.services.transcript import extract_video_id, get_transcript, format_transcript_with_timestamps, extract_relative_words
 from app.services.gemini_service import analyze_viral_moments
-from app.services.clip_extractor import extract_clip_section
+from app.services.clip_extractor import extract_clip_section, is_clip_ready, CLIP_EXECUTOR, MEDIA_CLIPS_DIR
+from app.services.video_composer import render_edited_short
 
 router = APIRouter(tags=["Analysis & Clips"])
 
@@ -81,10 +82,11 @@ async def analyze_video(request: AnalyzeRequest, background_tasks: BackgroundTas
             clip_file_id = f"{video_id}_{clip_num}"
             preview_relative_path = f"/media/clips/{clip_file_id}.mp4"
             
-            # Queue background section extraction using yt-dlp / ffmpeg
-            background_tasks.add_task(extract_clip_section, clean_url, start_s, end_s, clip_file_id)
+            # Queue fast parallel background section extraction using yt-dlp / ffmpeg
+            CLIP_EXECUTOR.submit(extract_clip_section, clean_url, start_s, end_s, clip_file_id)
             
             clip_obj = ViralClip(
+                clip_id=clip_file_id,
                 clip_number=clip_num,
                 hook_title=item["hook_title"],
                 start_time_seconds=start_s,
@@ -116,6 +118,24 @@ async def analyze_video(request: AnalyzeRequest, background_tasks: BackgroundTas
     else:
         # DIRECT_UPLOAD handling
         raise HTTPException(status_code=501, detail="Direct upload endpoint ready in media upload service.")
+
+@router.get("/clips/{clip_file_id}/status")
+async def get_clip_status(clip_file_id: str):
+    """
+    Checks if the clip MP4 has finished downloading and trimming on disk.
+    """
+    import os
+    clean_id = clip_file_id.replace(".mp4", "")
+    ready = is_clip_ready(clean_id)
+    target = os.path.join(MEDIA_CLIPS_DIR, f"{clean_id}.mp4")
+    size = os.path.getsize(target) if ready else 0
+    
+    return {
+        "clip_id": clean_id,
+        "ready": ready,
+        "file_size": size,
+        "url": f"/media/clips/{clean_id}.mp4"
+    }
 
 @router.post("/clips/{clip_id}/prepare", response_model=RenderManifest)
 async def prepare_clip_manifest(clip_id: str, request: PrepareClipRequest):
@@ -158,6 +178,31 @@ async def prepare_clip_manifest(clip_id: str, request: PrepareClipRequest):
         creator_tag=request.creator_tag,
         words=clip.words or []
     )
+
+@router.post("/clips/render", response_model=RenderResponse)
+async def render_clip_video(manifest: RenderManifest):
+    """
+    Renders the full 9:16 vertical short (1080x1920) with blurred background fill,
+    burned-in animated subtitles, opening viral hook banner, and creator watermark.
+    """
+    try:
+        manifest_dict = manifest.dict()
+        print(f"\n[RENDER_API] >>> Request received for clip_id={manifest.clip_id}, source_url={manifest.source_url}, hook={manifest.hook_text}")
+        rendered_rel_path = render_edited_short(manifest_dict)
+        duration = manifest.trim_end - manifest.trim_start
+        if duration <= 0:
+            duration = 30.0
+        print(f"[RENDER_API] <<< Render successful: {rendered_rel_path}")
+        return RenderResponse(
+            rendered_url=rendered_rel_path,
+            duration_seconds=round(duration, 2),
+            width=manifest.target_width,
+            height=manifest.target_height
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Video composition failed: {str(e)}")
 
 @router.get("/loadbalancer/status")
 async def get_load_balancer_status():

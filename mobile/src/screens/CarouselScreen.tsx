@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Share } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, Share, Platform, StatusBar, ActivityIndicator } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { ViralClip } from '../types';
+import { resolveMediaUrl, checkClipStatus } from '../services/api';
 
 interface CarouselScreenProps {
   clips: ViralClip[];
@@ -9,26 +10,83 @@ interface CarouselScreenProps {
   onBack: () => void;
 }
 
-const ClipVideoPlayerItem: React.FC<{ videoUrl: string; onStop: () => void }> = ({ videoUrl, onStop }) => {
+const ClipVideoPlayerItem: React.FC<{ videoUrl: string; clipFileId?: string; onStop: () => void }> = ({ videoUrl, clipFileId, onStop }) => {
+  const [isBuffering, setIsBuffering] = useState(true);
+
   const player = useVideoPlayer({
     uri: videoUrl,
-    headers: {
-      'bypass-tunnel-reminder': 'true',
-      'User-Agent': 'ClipSnapMobile/1.0',
-    },
   }, (p) => {
     p.loop = true;
     p.play();
   });
 
+  useEffect(() => {
+    let isMounted = true;
+    let pollInterval: any = null;
+
+    const verifyAndPlay = async () => {
+      const targetId = clipFileId || videoUrl;
+      const status = await checkClipStatus(targetId);
+      if (!isMounted) return;
+
+      if (status.ready) {
+        setIsBuffering(false);
+        try {
+          player.replace({ uri: videoUrl });
+          player.play();
+        } catch (e) {
+          console.log('[ClipVideoPlayer] Play error:', e);
+        }
+      } else {
+        // Poll every 1.5s until background yt-dlp extraction completes
+        pollInterval = setInterval(async () => {
+          const s = await checkClipStatus(targetId);
+          if (s.ready && isMounted) {
+            clearInterval(pollInterval);
+            setIsBuffering(false);
+            try {
+              player.replace({ uri: videoUrl });
+              player.play();
+            } catch (e) {
+              console.log('[ClipVideoPlayer] Play error:', e);
+            }
+          }
+        }, 1500);
+      }
+    };
+
+    verifyAndPlay();
+
+    const maxTimeout = setTimeout(() => {
+      if (isMounted && isBuffering) {
+        setIsBuffering(false);
+        player.play();
+      }
+    }, 30000);
+
+    return () => {
+      isMounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+      clearTimeout(maxTimeout);
+    };
+  }, [videoUrl, clipFileId]);
+
   return (
     <View style={styles.activeVideoContainer}>
-      <VideoView
-        style={styles.activeVideoView}
-        player={player}
-        nativeControls={true}
-        contentFit="contain"
-      />
+      {isBuffering ? (
+        <View style={styles.bufferingBox}>
+          <ActivityIndicator size="large" color="#FFE600" />
+          <Text style={styles.bufferingTitle}>Downloading HD Clip...</Text>
+          <Text style={styles.bufferingSub}>Trimming requested segment from YouTube</Text>
+        </View>
+      ) : (
+        <VideoView
+          style={styles.activeVideoView}
+          player={player}
+          nativeControls={true}
+          contentFit="contain"
+        />
+      )}
       <TouchableOpacity style={styles.closeVideoButton} onPress={onStop}>
         <Text style={styles.closeVideoText}>✕ Pause & Close Preview</Text>
       </TouchableOpacity>
@@ -87,11 +145,8 @@ export const CarouselScreen: React.FC<CarouselScreenProps> = ({ clips, onSelectC
           const isTranscriptOpen = !!expandedTranscript[item.clip_number];
           const kit = item.social_kit;
 
-          // Resolve streaming MP4 URL
-          const BASE_STREAM_URL = 'https://clipsnap-ai.loca.lt';
-          const streamUrl = item.preview_url && item.preview_url.startsWith('http')
-            ? item.preview_url
-            : `${BASE_STREAM_URL}${item.preview_url || `/media/clips/vHwchNO-bOE_${item.clip_number}.mp4`}`;
+          // Resolve streaming MP4 URL via local direct Wi-Fi (100% reliable)
+          const streamUrl = resolveMediaUrl(item.preview_url || `/media/clips/vHwchNO-bOE_${item.clip_number}.mp4`);
 
           return (
             <View style={styles.card}>
@@ -112,6 +167,7 @@ export const CarouselScreen: React.FC<CarouselScreenProps> = ({ clips, onSelectC
               {isPlaying ? (
                 <ClipVideoPlayerItem 
                   videoUrl={streamUrl} 
+                  clipFileId={item.preview_url}
                   onStop={() => setActivePlayingClip(null)} 
                 />
               ) : (
@@ -194,8 +250,16 @@ export const CarouselScreen: React.FC<CarouselScreenProps> = ({ clips, onSelectC
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D0F15' },
-  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 40, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#1A202C' },
-  backButton: { marginRight: 15 },
+  topBar: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 20, 
+    paddingTop: Platform.OS === 'android' ? Math.max(StatusBar.currentHeight || 0, 48) + 16 : 48, 
+    paddingBottom: 15, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#1A202C' 
+  },
+  backButton: { marginRight: 15, paddingVertical: 6, paddingHorizontal: 4 },
   backText: { color: '#FFE600', fontWeight: '700', fontSize: 15 },
   headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
   listContent: { padding: 20 },
@@ -219,6 +283,25 @@ const styles = StyleSheet.create({
   activeVideoView: { width: '100%', height: 180 },
   closeVideoButton: { height: 40, backgroundColor: '#1A202C', justifyContent: 'center', alignItems: 'center' },
   closeVideoText: { color: '#CBD5E1', fontSize: 12, fontWeight: '700' },
+  bufferingBox: {
+    height: 180,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#090B0E',
+    padding: 16,
+  },
+  bufferingTitle: {
+    color: '#FFE600',
+    fontWeight: '800',
+    fontSize: 14,
+    marginTop: 10,
+  },
+  bufferingSub: {
+    color: '#8E9AA8',
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: 'center',
+  },
 
   quoteBox: { backgroundColor: '#0D0F15', borderRadius: 10, padding: 12, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#FFE600' },
   quoteLabel: { color: '#7E8B9B', fontSize: 11, fontWeight: '600', marginBottom: 3 },

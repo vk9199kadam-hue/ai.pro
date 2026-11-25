@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Share, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Share, Linking, ActivityIndicator, Alert } from 'react-native';
+import * as Sharing from 'expo-sharing';
 import { RenderManifest, ViralClip } from '../types';
 import { renderVideoOnDevice } from '../services/nativeRenderer';
 import { showInterstitialAd } from '../services/admob';
@@ -53,11 +54,20 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
   const handleShareGeneral = async () => {
     if (!outputPath) return;
     try {
-      await Share.share({
-        title: clip.hook_title,
-        message: `Check out this viral short generated with ClipSnap AI: ${clip.hook_title}`,
-        url: outputPath,
-      });
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(outputPath, {
+          mimeType: 'video/mp4',
+          dialogTitle: 'Share Video Short',
+          UTI: 'public.movie',
+        });
+      } else {
+        await Share.share({
+          title: clip.hook_title,
+          message: `Check out this viral short generated with ClipSnap AI: ${clip.hook_title}`,
+          url: outputPath,
+        });
+      }
     } catch (err: any) {
       console.log('Share canceled or failed', err);
     }
@@ -78,8 +88,12 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
       {isRendering ? (
         <View style={styles.centerBox}>
           <ActivityIndicator size="large" color="#FFE600" />
-          <Text style={styles.titleText}>Rendering On-Device...</Text>
-          <Text style={styles.subtitleText}>Using Native Android Media3 GPU Acceleration</Text>
+          <Text style={styles.titleText}>
+            {progress < 50 ? 'Composing 9:16 Short...' : progress < 95 ? 'Saving to Phone Gallery...' : 'Finalizing Video...'}
+          </Text>
+          <Text style={styles.subtitleText}>
+            {progress < 50 ? 'Applying background blur, subtitles & hook banner' : 'Saving 1080×1920 MP4 to phone'}
+          </Text>
 
           {/* Progress Bar Container */}
           <View style={styles.progressBarTrack}>
@@ -87,16 +101,16 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
           </View>
           <Text style={styles.percentText}>{progress}% Completed</Text>
 
-          {/* Cloud vs Phone stat badge */}
+          {/* Quality badge */}
           <View style={styles.badgeBox}>
-            <Text style={styles.badgeText}>⚡ 0 MB Server Upload · 100% Private on Phone</Text>
+            <Text style={styles.badgeText}>⚡ 1080×1920 Full HD · Hardware Video Engine</Text>
           </View>
         </View>
       ) : (
         <View style={styles.centerBox}>
           <Text style={styles.successIcon}>🎉</Text>
           <Text style={styles.titleText}>Short Ready & Saved!</Text>
-          <Text style={styles.savedLocation}>Saved to: <Text style={styles.highlightText}>DCIM/ClipSnap</Text></Text>
+          <Text style={styles.savedLocation}>Saved to your phone Gallery & ready to share</Text>
 
           {/* Render Stats Card */}
           <View style={styles.statsCard}>
@@ -105,8 +119,8 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
               <Text style={styles.statVal}>1080 × 1920 (9:16)</Text>
             </View>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Render Time</Text>
-              <Text style={styles.statVal}>{renderDuration.toFixed(1)}s (Hardware GPU)</Text>
+              <Text style={styles.statLabel}>Edits Applied</Text>
+              <Text style={styles.statVal}>✅ Blur + Subtitles + Hook</Text>
             </View>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Viral Hook</Text>
@@ -114,31 +128,15 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
             </View>
           </View>
 
-          {/* Share Action Row */}
-          <Text style={styles.shareHeading}>Quick Share to Social Platforms:</Text>
-          <View style={styles.socialRow}>
-            <TouchableOpacity style={styles.socialBtn} onPress={() => handleOpenApp('youtube://')}>
-              <Text style={styles.socialEmoji}>🔴</Text>
-              <Text style={styles.socialLabel}>Shorts</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.socialBtn} onPress={() => handleOpenApp('instagram://')}>
-              <Text style={styles.socialEmoji}>📸</Text>
-              <Text style={styles.socialLabel}>Reels</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.socialBtn} onPress={() => handleOpenApp('snssdk1233://')}>
-              <Text style={styles.socialEmoji}>🎵</Text>
-              <Text style={styles.socialLabel}>TikTok</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.socialBtn} onPress={handleShareGeneral}>
-              <Text style={styles.socialEmoji}>📤</Text>
-              <Text style={styles.socialLabel}>More</Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Action Buttons */}
+          <TouchableOpacity style={styles.shareNowBtn} onPress={handleShareGeneral}>
+            <Text style={styles.shareNowBtnText}>📥 Save Video to Phone / Share (MP4)</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.expoGoNote}>
+            💡 Tap above to save the MP4 file to your Downloads or send directly to WhatsApp / Instagram
+          </Text>
+
           <TouchableOpacity style={styles.doneBtn} onPress={onFinish}>
             <Text style={styles.doneBtnText}>⚡ Create Another Short</Text>
           </TouchableOpacity>
@@ -275,13 +273,37 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  shareNowBtn: {
+    backgroundColor: '#1E2330',
+    borderRadius: 12,
+    paddingVertical: 15,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#FFE600',
+  },
+  shareNowBtnText: {
+    color: '#FFE600',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  expoGoNote: {
+    color: '#8E9AA8',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 6,
+    paddingHorizontal: 10,
+    lineHeight: 16,
+  },
   doneBtn: {
     backgroundColor: '#FFE600',
     borderRadius: 12,
     paddingVertical: 16,
     width: '100%',
     alignItems: 'center',
-    marginTop: 28,
+    marginTop: 12,
   },
   doneBtnText: {
     color: '#000',
