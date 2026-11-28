@@ -2,7 +2,7 @@ import axios from 'axios';
 import { AnalyzeResponse, RenderManifest } from '../types';
 
 // Direct local Wi-Fi server (same subnet as Metro, 100% reliable, zero tunnel drops)
-export const LOCAL_SERVER_IP = '10.111.23.89:8000';
+export const LOCAL_SERVER_IP = '10.125.178.89:8000';
 export const LOCAL_BASE_URL = `http://${LOCAL_SERVER_IP}`;
 
 // Active public tunnel (fallback for cellular data)
@@ -27,12 +27,12 @@ export const apiClient = axios.create({
   },
 });
 
-// Resilient Fallback: If local Wi-Fi fails, retry on active public tunnel
+// Resilient Fallback: Only retry on public tunnel if local Wi-Fi has a network/connection failure (!error.response)
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const config = error.config;
-    if (config && !config.__isRetry) {
+    if (!error.response && config && !config.__isRetry) {
       config.__isRetry = true;
       config.baseURL = `${PUBLIC_TUNNEL_URL}/api/v1`;
       return axios(config);
@@ -100,6 +100,15 @@ export const renderEditedVideo = async (
     height: number;
   }>('/clips/render', manifest);
   return response.data;
+};
+
+export const cleanupRenderedVideo = async (renderedUrl: string): Promise<void> => {
+  try {
+    if (!renderedUrl) return;
+    await apiClient.post('/clips/cleanup', { rendered_url: renderedUrl });
+  } catch {
+    // Non-critical cleanup; server background sweep handles leftovers
+  }
 };
 
 

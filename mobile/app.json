@@ -15,7 +15,8 @@
       ]
     },
     "plugins": [
-      "expo-video"
+      "expo-video",
+      "./plugins/withVideoRenderer"
     ]
   }
 }

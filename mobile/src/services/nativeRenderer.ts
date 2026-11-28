@@ -2,7 +2,7 @@ import { NativeModules, DeviceEventEmitter, Platform } from 'react-native';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as FileSystem from 'expo-file-system/legacy';
 import { RenderManifest } from '../types';
-import { renderEditedVideo, resolveMediaUrl } from './api';
+import { renderEditedVideo, resolveMediaUrl, cleanupRenderedVideo } from './api';
 
 interface RenderResult {
   outputPath: string;
@@ -14,9 +14,9 @@ interface RenderResult {
 
 /**
  * On-Device Video Renderer & Gallery Exporter Service
- * 1. Native Build: Executes Android Media3 Transformer hardware pipeline.
- * 2. Expo Go Mode: Downloads the real processed MP4 clip directly to the phone's 
- *    filesystem and saves it to the Android MediaStore Gallery (DCIM / ClipSnap AI).
+ * 1. Native Build: Downloads raw clip to cache, then executes Android Media3 Transformer
+ *    hardware GPU pipeline (blurred_fill, animated subtitles, hook banner, watermark).
+ * 2. Expo Go Mode: Uses local dev backend FFmpeg composer and saves the MP4 to phone Gallery.
  */
 export async function renderVideoOnDevice(
   manifest: RenderManifest,
@@ -32,32 +32,74 @@ export async function renderVideoOnDevice(
     console.warn('[NativeRenderer] Permission request notice:', err?.message || err);
   }
 
-  // 2. Production Native Android Path (Media3 Transformer Module)
+  // 2. Production Native Android Path (Media3 Transformer GPU Module)
   if (Platform.OS === 'android' && VideoRendererModule) {
+    let localSourcePath = manifest.source_url;
+    let tempCachedFile: string | null = null;
+
+    // Pre-download HTTP clip to local cache so MediaMetadataRetriever & Media3 run 100% offline/fast
+    if (localSourcePath.startsWith('http://') || localSourcePath.startsWith('https://')) {
+      if (onProgress) onProgress(5);
+      const cacheTarget = `${FileSystem.cacheDirectory}raw_${manifest.clip_id || Date.now()}.mp4`;
+      console.log('[NativeRenderer] Pre-fetching raw clip to local cache for Media3 GPU:', localSourcePath);
+
+      const dl = FileSystem.createDownloadResumable(
+        localSourcePath,
+        cacheTarget,
+        {},
+        (dp) => {
+          if (onProgress && dp.totalBytesExpectedToWrite > 0) {
+            const pct = 5 + Math.round((dp.totalBytesWritten / dp.totalBytesExpectedToWrite) * 20);
+            onProgress(Math.min(25, pct));
+          }
+        }
+      );
+      const dlRes = await dl.downloadAsync();
+      if (!dlRes || !dlRes.uri) {
+        throw new Error('Failed to fetch source clip for on-device rendering');
+      }
+      localSourcePath = dlRes.uri;
+      tempCachedFile = dlRes.uri;
+    }
+
+    if (onProgress) onProgress(25);
+    const localManifest: RenderManifest = {
+      ...manifest,
+      source_url: localSourcePath,
+    };
+
     return new Promise((resolve, reject) => {
       let progressSub: any = null;
 
       if (onProgress) {
         progressSub = DeviceEventEmitter.addListener('onRenderProgress', (data: { progress: number }) => {
-          onProgress(Math.min(100, Math.round(data.progress * 100)));
+          const scaled = 25 + Math.round(data.progress * 75);
+          onProgress(Math.min(99, scaled));
         });
       }
 
-      VideoRendererModule.renderClip(JSON.stringify(manifest))
+      VideoRendererModule.renderClip(JSON.stringify(localManifest))
         .then(async (resultJson: string) => {
           if (progressSub) progressSub.remove();
+          if (tempCachedFile) {
+            FileSystem.deleteAsync(tempCachedFile, { idempotent: true }).catch(() => {});
+          }
           const parsed = JSON.parse(resultJson);
           try {
-            if (parsed.outputPath && parsed.outputPath.startsWith('file://')) {
+            if (!parsed.savedToGallery && parsed.outputPath && parsed.outputPath.startsWith('file://')) {
               await MediaLibrary.saveToLibraryAsync(parsed.outputPath);
             }
           } catch (e) {
             console.warn('[NativeRenderer] Save to library warning:', e);
           }
+          if (onProgress) onProgress(100);
           resolve(parsed);
         })
         .catch((err: any) => {
           if (progressSub) progressSub.remove();
+          if (tempCachedFile) {
+            FileSystem.deleteAsync(tempCachedFile, { idempotent: true }).catch(() => {});
+          }
           reject(err);
         });
     });
@@ -114,6 +156,9 @@ export async function renderVideoOnDevice(
   } catch (libErr: any) {
     console.warn('[NativeRenderer] MediaLibrary save notice:', libErr.message);
   }
+
+  // Delete temporary rendered MP4 from backend server immediately after download
+  cleanupRenderedVideo(renderedRelativeUrl).catch(() => {});
 
   if (onProgress) onProgress(100);
 

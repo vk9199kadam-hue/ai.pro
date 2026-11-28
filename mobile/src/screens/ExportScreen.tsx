@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Share, Linking, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Share, Linking, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { RenderManifest, ViralClip } from '../types';
 import { renderVideoOnDevice } from '../services/nativeRenderer';
 import { showInterstitialAd } from '../services/admob';
+import { saveExportedVideo } from '../services/storage';
 
 interface ExportScreenProps {
   manifest: RenderManifest;
@@ -32,6 +34,26 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
         const result = await renderVideoOnDevice(manifest, (pct) => {
           if (isMounted) setProgress(pct);
         });
+
+        // 3. Persist exported video record and remove any previous local version for this clip
+        if (result.outputPath) {
+          const kit = clip.social_kit;
+          const replacedUris = await saveExportedVideo({
+            id: `${manifest.clip_id}_${Date.now()}`,
+            clip_id: manifest.clip_id,
+            hook_title: kit?.viral_title || clip.hook_title || 'Viral Short',
+            local_uri: result.outputPath,
+            duration_seconds: Math.round((result.durationMs || 0) / 1000),
+            created_at: Date.now(),
+            social_caption: kit?.caption || clip.key_quote || '',
+            social_hashtags: kit?.hashtags_formatted || '#ViralShorts #Reels #Trending',
+          });
+          for (const oldUri of replacedUris) {
+            if (oldUri.startsWith('file://')) {
+              await FileSystem.deleteAsync(oldUri, { idempotent: true }).catch(() => {});
+            }
+          }
+        }
 
         if (isMounted) {
           setOutputPath(result.outputPath);
@@ -73,6 +95,22 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
     }
   };
 
+  const handleCopySocialKit = async () => {
+    const kit = clip.social_kit;
+    const title = kit?.viral_title || clip.hook_title;
+    const caption = kit?.caption || clip.key_quote || '';
+    const hashtags = kit?.hashtags_formatted || '#ViralShorts #Reels #Trending';
+    const textToShare = `${title}\n\n${caption}\n\n${hashtags}`.trim();
+    try {
+      await Share.share({
+        title,
+        message: textToShare,
+      });
+    } catch {
+      Alert.alert('AI Social Media Kit', textToShare);
+    }
+  };
+
   const handleOpenApp = (scheme: string) => {
     Linking.canOpenURL(scheme).then((supported) => {
       if (supported) {
@@ -107,7 +145,7 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
           </View>
         </View>
       ) : (
-        <View style={styles.centerBox}>
+        <ScrollView contentContainerStyle={styles.scrollCenterBox} showsVerticalScrollIndicator={false}>
           <Text style={styles.successIcon}>🎉</Text>
           <Text style={styles.titleText}>Short Ready & Saved!</Text>
           <Text style={styles.savedLocation}>Saved to your phone Gallery & ready to share</Text>
@@ -124,8 +162,25 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
             </View>
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Viral Hook</Text>
-              <Text style={styles.statVal} numberOfLines={1}>{clip.hook_title}</Text>
+              <Text style={[styles.statVal, { flex: 1, textAlign: 'right', marginLeft: 12 }]} numberOfLines={1}>{clip.hook_title}</Text>
             </View>
+          </View>
+
+          {/* AI Social Media Kit Card */}
+          <View style={styles.socialKitCard}>
+            <View style={styles.socialKitHeader}>
+              <Text style={styles.socialKitTitle}>📱 AI Social Media Kit</Text>
+              <TouchableOpacity style={styles.copyKitBtn} onPress={handleCopySocialKit}>
+                <Text style={styles.copyKitBtnText}>📋 Copy / Share</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.kitLabel}>Title:</Text>
+            <Text selectable style={styles.kitText}>{clip.social_kit?.viral_title || clip.hook_title}</Text>
+            <Text style={styles.kitLabel}>Caption:</Text>
+            <Text selectable style={styles.kitText}>{clip.social_kit?.caption || clip.key_quote}</Text>
+            <Text style={styles.kitHashtags} selectable>
+              {clip.social_kit?.hashtags_formatted || '#ViralShorts #Reels #Trending'}
+            </Text>
           </View>
 
           {/* Action Buttons */}
@@ -144,7 +199,7 @@ export const ExportScreen: React.FC<ExportScreenProps> = ({ manifest, clip, onFi
           <TouchableOpacity style={styles.backBtn} onPress={onBackToCarousel}>
             <Text style={styles.backBtnText}>Choose Another Moment from this Video</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -159,6 +214,61 @@ const styles = StyleSheet.create({
   },
   centerBox: {
     alignItems: 'center',
+  },
+  scrollCenterBox: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  socialKitCard: {
+    backgroundColor: '#141822',
+    borderWidth: 1,
+    borderColor: '#2E364A',
+    borderRadius: 14,
+    padding: 14,
+    width: '100%',
+    marginTop: 14,
+  },
+  socialKitHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  socialKitTitle: {
+    color: '#FFE600',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  copyKitBtn: {
+    backgroundColor: '#1E2330',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FFE600',
+  },
+  copyKitBtnText: {
+    color: '#FFE600',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  kitLabel: {
+    color: '#667085',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  kitText: {
+    color: '#E2E8F0',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  kitHashtags: {
+    color: '#60A5FA',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 6,
   },
   titleText: {
     color: '#FFF',

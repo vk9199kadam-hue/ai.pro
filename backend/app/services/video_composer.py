@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import base64
 import subprocess
 import logging
 from typing import List, Dict, Any, Optional
@@ -46,15 +47,35 @@ def format_ass_time(seconds: float) -> str:
     return f"{hrs:d}:{mins:02d}:{secs:02d}.{cs:02d}"
 
 def get_watermark_style(position: str = "bottom_right") -> str:
-    """Returns ASS style line for watermark position."""
+    """Returns ASS style line for watermark position (non-overlapping with 84px logo)."""
     pos_map = {
-        "bottom_right": (3, 40, 40, 240),
-        "bottom_left": (1, 40, 40, 240),
-        "top_right": (9, 40, 40, 180),
-        "top_left": (7, 40, 40, 180),
+        "bottom_right": (3, 40, 40, 190),
+        "bottom_left": (1, 40, 40, 190),
+        "top_right": (9, 40, 40, 165),
+        "top_left": (7, 40, 40, 165),
     }
-    align, ml, mr, mv = pos_map.get(position, (3, 40, 40, 240))
+    align, ml, mr, mv = pos_map.get(position, (3, 40, 40, 190))
     return f"Style: Watermark, Arial, 36, &H80FFFFFF, &H000000FF, &H00000000, &H00000000, 1, 0, 0, 0, 100, 100, 0, 0, 1, 3, 1, {align}, {ml}, {mr}, {mv}, 1"
+
+
+_HAS_VIDEOTOOLBOX: Optional[bool] = None
+
+
+def supports_videotoolbox() -> bool:
+    """Checks once whether FFmpeg supports Apple VideoToolbox hardware H.264."""
+    global _HAS_VIDEOTOOLBOX
+    if _HAS_VIDEOTOOLBOX is None:
+        try:
+            res = subprocess.run(
+                [FFMPEG_BIN, "-hide_banner", "-encoders"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            _HAS_VIDEOTOOLBOX = b"h264_videotoolbox" in res.stdout
+        except Exception:
+            _HAS_VIDEOTOOLBOX = False
+    return _HAS_VIDEOTOOLBOX
 
 def generate_ass_subtitles(
     ass_path: str,
@@ -187,6 +208,7 @@ def render_edited_short(manifest: Dict[str, Any]) -> str:
     creator_tag = manifest.get("creator_tag") or manifest.get("watermark_text")
     watermark_enabled = manifest.get("watermark_enabled", True)
     watermark_position = manifest.get("watermark_position", "bottom_right")
+    logo_base64 = manifest.get("logo_base64")
     hook_text = manifest.get("hook_text")
     hook_enabled = manifest.get("hook_enabled", True)
     words = manifest.get("words", [])
@@ -268,58 +290,92 @@ def render_edited_short(manifest: Dict[str, Any]) -> str:
             "[bg][fg]overlay=0:(1920-h)/2[v_base]"
         )
     else:
-        # Default: blurred_fill (high-speed downscaled bokeh blur)
+        # Default: blurred_fill (high-speed downscaled bokeh blur with fast_bilinear scaling)
         base_v = (
             "[0:v]split=2[fg_in][bg_in];"
-            "[bg_in]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=8:3,scale=1080:1920[bg];"
+            "[bg_in]scale=270:480:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=270:480,boxblur=8:3,scale=1080:1920:flags=fast_bilinear[bg];"
             "[fg_in]scale=1080:-2[fg];"
             "[bg][fg]overlay=0:(1920-h)/2[v_base]"
         )
 
+    # Optional PNG Logo decoding for FFmpeg overlay
+    logo_path = None
+    if watermark_enabled and logo_base64:
+        try:
+            raw_b64 = logo_base64.split(",")[-1].strip()
+            logo_bytes = base64.b64decode(raw_b64)
+            candidate_logo = os.path.join(MEDIA_CLIPS_DIR, f"logo_{clean_file_id}_{int(time.time())}.png")
+            with open(candidate_logo, "wb") as lf:
+                lf.write(logo_bytes)
+            if os.path.exists(candidate_logo) and os.path.getsize(candidate_logo) > 0:
+                logo_path = candidate_logo
+        except Exception as logo_err:
+            logger.warning(f"Could not decode logo_base64: {logo_err}")
+            logo_path = None
+
     if has_subtitles and os.path.exists(ass_path):
         escaped_ass_path = ass_path.replace(":", "\\:").replace("'", "\\'")
-        vf = f"{base_v};[v_base]subtitles='{escaped_ass_path}'[outv]"
+        vf = f"{base_v};[v_base]subtitles='{escaped_ass_path}'[v_sub]"
     else:
-        vf = f"{base_v};[v_base]null[outv]"
+        vf = f"{base_v};[v_base]null[v_sub]"
 
-    # 4. Assemble FFmpeg command
-    cmd = [
-        FFMPEG_BIN, "-y"
-    ]
+    if logo_path:
+        # Logo is max 84x84; top corners place logo at y=65 (text at y=165), bottom corners place logo above text at H-h-250 (text at MarginV=190)
+        pos_overlay_map = {
+            "top_left": "40:65",
+            "top_right": "W-w-40:65",
+            "bottom_left": "40:H-h-250",
+            "bottom_right": "W-w-40:H-h-250",
+        }
+        overlay_xy = pos_overlay_map.get(watermark_position, "W-w-40:H-h-250")
+        vf = f"{vf};[1:v]scale=84:84:force_original_aspect_ratio=decrease[logo];[v_sub][logo]overlay={overlay_xy}[outv]"
+    else:
+        vf = f"{vf};[v_sub]null[outv]"
 
-    # Apply trim range if specified
-    if trim_start > 0:
-        cmd.extend(["-ss", str(trim_start)])
-    if trim_end > trim_start:
-        cmd.extend(["-to", str(trim_end)])
+    # 4. Assemble FFmpeg command (use Apple VideoToolbox GPU when available for 4-5x faster export)
+    def build_cmd(use_hw: bool, copy_audio: bool) -> List[str]:
+        c = [FFMPEG_BIN, "-y"]
+        if trim_start > 0:
+            c.extend(["-ss", str(trim_start)])
+        if trim_end > trim_start:
+            c.extend(["-to", str(trim_end)])
+        c.extend(["-i", local_source])
+        if logo_path:
+            c.extend(["-i", logo_path])
+        c.extend(["-filter_threads", "4", "-filter_complex", vf, "-map", "[outv]", "-map", "0:a?"])
+        if use_hw:
+            c.extend(["-c:v", "h264_videotoolbox", "-b:v", "2200k", "-allow_sw", "1"])
+        else:
+            c.extend(["-c:v", "libx264", "-preset", "ultrafast", "-crf", "24"])
+        c.extend(["-pix_fmt", "yuv420p"])
+        if copy_audio:
+            c.extend(["-c:a", "copy"])
+        else:
+            c.extend(["-c:a", "aac", "-b:a", "128k"])
+        c.extend(["-movflags", "+faststart", output_path])
+        return c
 
-    cmd.extend([
-        "-i", local_source,
-        "-filter_complex", vf,
-        "-map", "[outv]",
-        "-map", "0:a?",
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "22",
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-movflags", "+faststart",
-        output_path
-    ])
-
-    print(f"[video_composer] Rendering video: {' '.join(cmd[:12])} ... -> {output_filename}")
+    use_hw_gpu = supports_videotoolbox()
+    cmd = build_cmd(use_hw=use_hw_gpu, copy_audio=True)
+    print(f"[video_composer] Rendering video (hw_gpu={use_hw_gpu}): {' '.join(cmd[:12])} ... -> {output_filename}")
     start_t = time.time()
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
 
+    # Fallback if stream-copy audio fails on an incompatible container/codec
+    if result.returncode != 0:
+        cmd_fallback = build_cmd(use_hw=False, copy_audio=False)
+        print(f"[video_composer] Retrying with software libx264 + AAC audio...")
+        result = subprocess.run(cmd_fallback, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+
     render_sec = round(time.time() - start_t, 2)
 
-    # Clean up temporary ASS file
-    if os.path.exists(ass_path):
-        try:
-            os.remove(ass_path)
-        except Exception:
-            pass
+    # Clean up temporary ASS & logo files
+    for tmp_f in (ass_path, logo_path):
+        if tmp_f and os.path.exists(tmp_f):
+            try:
+                os.remove(tmp_f)
+            except Exception:
+                pass
 
     if result.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) < 10000:
         stderr_msg = result.stderr.decode("utf-8", errors="ignore")

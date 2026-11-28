@@ -2,9 +2,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 class AnalyzeRequest(BaseModel):
-    source_type: str = Field(..., description="'YOUTUBE_URL' or 'DIRECT_UPLOAD'")
-    url: Optional[str] = Field(None, description="YouTube or media URL")
-    num_clips: int = Field(default=3, ge=1, le=6, description="Number of viral clips to detect")
+    source_type: str = Field(default="YOUTUBE_URL", description="'YOUTUBE_URL'")
+    url: str = Field(..., description="YouTube video URL")
+    num_clips: int = Field(default=3, ge=1, le=5, description="Number of viral clips to detect (max 5)")
 
 class WordTimestamp(BaseModel):
     word: str
@@ -62,6 +62,8 @@ class RenderManifest(BaseModel):
     watermark_text: Optional[str] = None
     watermark_enabled: bool = True
     watermark_position: Optional[str] = "bottom_right"
+    logo_uri: Optional[str] = None
+    logo_base64: Optional[str] = None
     words: List[WordTimestamp] = []
 
 class RenderResponse(BaseModel):

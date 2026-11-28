@@ -13,10 +13,12 @@ import {
   Dimensions,
   Platform,
   StatusBar,
+  Switch,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { ViralClip, RenderManifest, EditorSession, CaptionWord } from '../types';
 import { saveProjectDraft, loadLatestProjectDraft } from '../services/storage';
 import { resolveMediaUrl } from '../services/api';
@@ -419,12 +421,23 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
   };
 
   // Trigger MP4 Export with 9:16 layout, captions & hook
-  const handleExportFinal = () => {
+  const handleExportFinal = async () => {
     const targetLayout = session.layout.mode === 'fill_crop'
       ? 'center_crop'
       : session.layout.mode === 'fit_black'
       ? 'fit_black'
       : 'blurred_fill';
+
+    let logoBase64: string | undefined = undefined;
+    if (session.branding.enabled && session.branding.logoUri) {
+      try {
+        logoBase64 = await FileSystem.readAsStringAsync(session.branding.logoUri, {
+          encoding: 'base64',
+        });
+      } catch (e) {
+        console.warn('[EditorScreen] Could not read logoUri as base64:', e);
+      }
+    }
 
     // Construct final RenderManifest for saver
     const manifest: RenderManifest = {
@@ -443,6 +456,8 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
       watermark_text: session.branding.enabled ? session.branding.watermarkText : undefined,
       watermark_enabled: session.branding.enabled,
       watermark_position: session.branding.position,
+      logo_uri: session.branding.enabled && session.branding.logoUri ? session.branding.logoUri : undefined,
+      logo_base64: logoBase64,
       words: session.captions.words
         .filter(w => !w.isDeleted)
         .map(w => ({
@@ -594,21 +609,22 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
               <View style={[
                 styles.watermarkOverlay, 
                 getWatermarkPositionStyle(session.branding.position),
-                { opacity: session.branding.opacity }
+                { opacity: session.branding.opacity, alignItems: session.branding.position.includes('left') ? 'flex-start' : 'flex-end' }
               ]}>
-                {session.branding.type === 'logo' && session.branding.logoUri ? (
+                {session.branding.logoUri ? (
                   <Image 
                     source={{ uri: session.branding.logoUri }} 
                     style={styles.watermarkLogoImage} 
                     resizeMode="contain" 
                   />
-                ) : (
+                ) : null}
+                {session.branding.watermarkText.trim() ? (
                   <View style={styles.watermarkTextBadge}>
                     <Text style={styles.watermarkTextLabel}>
                       {session.branding.watermarkText}
                     </Text>
                   </View>
-                )}
+                ) : null}
               </View>
             ) : null}
 
@@ -685,8 +701,24 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
           {/* TAB 1: CAPTIONS & SUBTITLES */}
           {activeTab === 'captions' && (
             <View>
-              <Text style={styles.toolTitle}>Animated Subtitles Style</Text>
-              <View style={styles.optionRow}>
+              <View style={styles.toggleHeaderRow}>
+                <Text style={[styles.toolTitle, { marginBottom: 0 }]}>Animated Subtitles</Text>
+                <View style={styles.toggleWrap}>
+                  <Text style={styles.toggleLabel}>{session.captions.enabled ? 'ON' : 'OFF'}</Text>
+                  <Switch
+                    value={session.captions.enabled}
+                    onValueChange={(val) => {
+                      pushStateChange({
+                        ...session,
+                        captions: { ...session.captions, enabled: val },
+                      });
+                    }}
+                    trackColor={{ false: '#2A3142', true: '#FFE600' }}
+                    thumbColor={session.captions.enabled ? '#000' : '#8E9AA8'}
+                  />
+                </View>
+              </View>
+              <View style={[styles.optionRow, !session.captions.enabled && { opacity: 0.45 }]}>
                 <TouchableOpacity 
                   style={[styles.stylePill, session.captions.style === 'hype_yellow' && styles.stylePillActive]}
                   onPress={() => {
@@ -774,9 +806,25 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
           {/* TAB 3: WATERMARK & BRANDING */}
           {activeTab === 'brand' && (
             <View>
-              <Text style={styles.toolTitle}>Creator Watermark & Brand Suite</Text>
+              <View style={styles.toggleHeaderRow}>
+                <Text style={[styles.toolTitle, { marginBottom: 0 }]}>Watermark & Brand Suite</Text>
+                <View style={styles.toggleWrap}>
+                  <Text style={styles.toggleLabel}>{session.branding.enabled ? 'ON' : 'OFF'}</Text>
+                  <Switch
+                    value={session.branding.enabled}
+                    onValueChange={(val) => {
+                      pushStateChange({
+                        ...session,
+                        branding: { ...session.branding, enabled: val },
+                      });
+                    }}
+                    trackColor={{ false: '#2A3142', true: '#FFE600' }}
+                    thumbColor={session.branding.enabled ? '#000' : '#8E9AA8'}
+                  />
+                </View>
+              </View>
               
-              <Text style={styles.subLabel}>Social Handle Text</Text>
+              <Text style={styles.subLabel}>Social Handle Text (shown with Logo)</Text>
               <TextInput
                 style={styles.textInput}
                 value={session.branding.watermarkText}
@@ -815,9 +863,32 @@ export const EditorScreen: React.FC<EditorScreenProps> = ({
               </View>
 
               {/* Pick PNG Logo */}
-              <TouchableOpacity style={styles.pickLogoBtn} onPress={handlePickLogo}>
-                <Text style={styles.pickLogoBtnText}>📁 Pick PNG Logo from Device Gallery</Text>
-              </TouchableOpacity>
+              <View style={styles.logoActionRow}>
+                <TouchableOpacity style={[styles.pickLogoBtn, { flex: 1 }]} onPress={handlePickLogo}>
+                  <Text style={styles.pickLogoBtnText}>
+                    {session.branding.logoUri ? '🔄 Change PNG Logo' : '📁 Pick PNG Logo'}
+                  </Text>
+                </TouchableOpacity>
+                {session.branding.logoUri ? (
+                  <TouchableOpacity
+                    style={styles.removeLogoBtn}
+                    onPress={() => {
+                      pushStateChange({
+                        ...session,
+                        branding: { ...session.branding, logoUri: null, type: 'text' },
+                      });
+                    }}
+                  >
+                    <Text style={styles.removeLogoBtnText}>✕ Remove</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {session.branding.logoUri ? (
+                <View style={styles.logoPreviewBar}>
+                  <Image source={{ uri: session.branding.logoUri }} style={styles.logoThumbSmall} resizeMode="contain" />
+                  <Text style={styles.logoPreviewNote}>PNG Logo + Social Handle will appear together</Text>
+                </View>
+              ) : null}
             </View>
           )}
 
@@ -1166,8 +1237,64 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   watermarkLogoImage: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
+    marginBottom: 4,
+  },
+  toggleHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  toggleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  toggleLabel: {
+    color: '#FFE600',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  logoActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 6,
+  },
+  removeLogoBtn: {
+    backgroundColor: '#2A1820',
+    borderWidth: 1,
+    borderColor: '#FF5C77',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  removeLogoBtnText: {
+    color: '#FF5C77',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  logoPreviewBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0D0F15',
+    borderRadius: 10,
+    padding: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#232938',
+    gap: 10,
+  },
+  logoThumbSmall: {
+    width: 30,
+    height: 30,
+  },
+  logoPreviewNote: {
+    color: '#8E9AA8',
+    fontSize: 12,
+    flex: 1,
   },
   watermarkTextBadge: {
     backgroundColor: 'rgba(0, 0, 0, 0.7)',

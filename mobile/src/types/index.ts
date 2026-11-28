@@ -61,7 +61,20 @@ export interface RenderManifest {
   watermark_text?: string;
   watermark_enabled?: boolean;
   watermark_position?: string;
+  logo_uri?: string;
+  logo_base64?: string;
   words: WordTimestamp[];
+}
+
+export interface ExportedVideoRecord {
+  id: string;
+  clip_id: string;
+  hook_title: string;
+  local_uri: string;
+  duration_seconds: number;
+  created_at: number;
+  social_caption?: string;
+  social_hashtags?: string;
 }
 
 export interface EditorSession {
